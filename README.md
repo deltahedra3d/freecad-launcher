@@ -61,8 +61,8 @@ chmod +x freecad_launcher.sh
 ### On first launch, the script will :
 
 * Create required directories
-* Download FreeCAD
-* Set up a desktop shortcut
+* Download FreeCAD (Stable or Weekly depending of your choice)
+* Set up a desktop shortcut (FreeCAD Launcher)
 
 ---
 
