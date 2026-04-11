@@ -1,7 +1,8 @@
 # FreeCAD Smart Launcher
 
 A Bash utility for Linux designed to manage, update, and launch both Stable and Weekly FreeCAD AppImages.
-[Capture d'écran de mon lanceur](INTERFACE.png)
+<img width="723" height="460" alt="INTERFACE" src="https://github.com/user-attachments/assets/d2b4fd7c-86c1-4e87-a9d7-02d8165c7706" />
+
 ---
 
 ## Features
