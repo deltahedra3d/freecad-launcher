@@ -1,4 +1,5 @@
-<img width="150" height="auto" alt="FreeCAD" src="https://github.com/user-attachments/assets/bcce8c08-cb8e-49bc-ba9f-1eb016547be8" />
+<img width="1095" height="349" alt="FreeCAD_launcher" src="https://github.com/user-attachments/assets/0b81ee80-622b-4d9f-9b83-d445af8ca72b" />
+
 
 # FreeCAD Smart Launcher
 
