@@ -132,4 +132,4 @@ else
     echo "[!] FreeCAD executable not found!"
     read -p "Press enter to exit..."
 fi
-exit
+exit 
