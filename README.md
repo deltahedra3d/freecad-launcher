@@ -50,7 +50,7 @@ chmod +x freecad_launcher.sh
 
 #### 3. Run it
 ```bash
-./freecad_launcher.sh`
+./freecad_launcher.sh
 ```
 
 On first launch, the script will:
