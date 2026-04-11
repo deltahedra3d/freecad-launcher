@@ -1,4 +1,5 @@
 <img width="150" height="auto" alt="FreeCAD" src="https://github.com/user-attachments/assets/bcce8c08-cb8e-49bc-ba9f-1eb016547be8" />
+
 # FreeCAD Smart Launcher
 
 A Bash utility for Linux designed to manage, update, and launch both Stable and Weekly FreeCAD AppImages.
