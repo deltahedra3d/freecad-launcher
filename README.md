@@ -49,9 +49,9 @@ wget [https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/mai
 
 On first launch, the script will:
 
-Create required directories
-Download FreeCAD
-Set up a desktop shortcut
+* Create required directories
+* Download FreeCAD
+* Set up a desktop shortcut
 
 ---
 
