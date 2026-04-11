@@ -67,6 +67,11 @@ chmod +x freecad_launcher.sh
 
 ---
 
+## Uninstall
+Go to `~/Applications` and delete the FreeCAD files
+
+---
+
 ## Dependencies
 
 ### No manual installation required
