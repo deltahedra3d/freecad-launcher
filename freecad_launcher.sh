@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# FreeCAD Smart Launcher (v4.5 - 4-Column Layout)
+# FreeCAD Smart Launcher (v4.6 - Stream Install & 4-Column Layout)
 # Copyright (c) 2026 deltahedra3d
 
 INSTALL_DIR="$HOME/Applications"
@@ -47,12 +47,21 @@ StartupNotify=true
 EOF
 chmod +x "$HOME/.local/share/applications/freecad-launcher.desktop"
 
-# Auto-install
-if [ "$(readlink -f "$0")" != "$(readlink -f "$SCRIPT_PATH")" ]; then
-    cp "$0" "$SCRIPT_PATH" && chmod +x "$SCRIPT_PATH"
+# 4. SMART AUTO-INSTALL (Fix pour curl | bash)
+if [ -f "$0" ]; then
+    # Cas classique : lancé depuis un fichier
+    if [ "$(readlink -f "$0")" != "$(readlink -f "$SCRIPT_PATH")" ]; then
+        cp "$0" "$SCRIPT_PATH" && chmod +x "$SCRIPT_PATH"
+    fi
+else
+    # Cas curl | bash : $0 n'est pas un fichier, on télécharge la source
+    if [ ! -f "$SCRIPT_PATH" ]; then
+        curl -sSL https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh > "$SCRIPT_PATH"
+        chmod +x "$SCRIPT_PATH"
+    fi
 fi
 
-# 4. GET INFO & UPDATE DETECTION
+# 5. GET INFO & UPDATE DETECTION
 STABLE_JSON=$(curl -s "https://api.github.com/repos/$REPO/releases/latest")
 STABLE_TAG=$(echo "$STABLE_JSON" | jq -r '.tag_name // "Unknown"')
 
@@ -87,7 +96,7 @@ CHECK_STABLE=$(find "$INSTALL_DIR" -maxdepth 1 -name ".*$STABLE_TAG*.AppImage" |
 WEEKLY_FILENAME=$(echo "$WEEKLY_JSON" | jq -r '.assets[] | select(.name | contains("AppImage") and contains("x86_64") and (test("sha256|sig|zsync") | not)) | .name' | head -n 1)
 [ -f "$INSTALL_DIR/.$WEEKLY_FILENAME" ] && WEEKLY_STATUS="$STATUS_OK" || WEEKLY_STATUS="$STATUS_NEW"
 
-# 5. UPDATE FUNCTION
+# 6. UPDATE FUNCTION
 update_version() {
     local type=$1
     local final_name="FreeCAD-$type.AppImage"
@@ -113,7 +122,7 @@ update_version() {
     fi
 }
 
-# 6. MENU (4-Column Layout)
+# 7. MENU (4 Columns)
 CHOICE=$(zenity --list --radiolist \
     --window-icon="$ICON_PATH" \
     --title="FreeCAD Launcher" \
