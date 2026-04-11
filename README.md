@@ -29,22 +29,24 @@ A Bash utility for Linux designed to manage, update, and launch both Stable and 
 
 ## Installation
 
-### 🚀 Option 1: Quick Install (Recommended)
+### Option 1: Quick Install (Recommended)
 
 Paste this command into your terminal to install and configure everything automatically:
 
 
 `curl -fsSL https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh | bash`
 
-### 1. Download the script
+### Option 2: Manual
+
+#### 1. Download the script
 
 wget [https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/main/freecad_launcher.sh](https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/main/freecad_launcher.sh)
 
-### 2. Make it executable
+#### 2. Make it executable
 
 `chmod +x freecad_launcher.sh`
 
-### 2. Run it
+#### 3. Run it
 
 `./freecad_launcher.sh`
 
