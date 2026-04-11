@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# FreeCAD Smart Launcher (v4.7 - Final Stealth Install)
+# FreeCAD Smart Launcher (v4.8 - Multi-Distro Shield)
 # Copyright (c) 2026 deltahedra3d
 
 INSTALL_DIR="$HOME/Applications"
@@ -8,23 +8,33 @@ SCRIPT_PATH="$INSTALL_DIR/freecad_launcher.sh"
 ICON_PATH="$INSTALL_DIR/freecad_icon.png"
 REPO="FreeCAD/FreeCAD"
 
-# 1. DEPENDENCIES CHECK & AUTO-INSTALL
+# 1. DEPENDENCIES CHECK & AUTO-INSTALL (Blindé pour Arch/Cachy/Fedora/Ubuntu)
 MISSING_DEPS=()
+# On vérifie les outils de base + libfuse (nécessaire pour lancer les AppImages)
 for cmd in jq zenity curl wget; do
     if ! command -v $cmd &> /dev/null; then
         MISSING_DEPS+=($cmd)
     fi
 done
 
-if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
+# Vérification spécifique pour libfuse2 (nommé différemment selon les distros)
+if ! ldconfig -p | grep -q "libfuse.so.2"; then
+    FUSE_NEEDED=true
+else
+    FUSE_NEEDED=false
+fi
+
+if [ ${#MISSING_DEPS[@]} -ne 0 ] || [ "$FUSE_NEEDED" = true ]; then
+    echo "Updating system and installing dependencies..."
     if command -v apt &> /dev/null; then
-        sudo apt update && sudo apt install -y "${MISSING_DEPS[@]}"
+        sudo apt update && sudo apt install -y "${MISSING_DEPS[@]}" libfuse2
     elif command -v dnf &> /dev/null; then
-        sudo dnf install -y "${MISSING_DEPS[@]}"
+        sudo dnf install -y "${MISSING_DEPS[@]}" fuse-libs
     elif command -v pacman &> /dev/null; then
-        sudo pacman -S --noconfirm "${MISSING_DEPS[@]}"
+        # -Sy est crucial sur Arch/CachyOS pour rafraîchir les dépôts avant install
+        sudo pacman -Sy --noconfirm --needed "${MISSING_DEPS[@]}" fuse2
     elif command -v zypper &> /dev/null; then
-        sudo zypper install -y "${MISSING_DEPS[@]}"
+        sudo zypper install -y "${MISSING_DEPS[@]}" fuse
     fi
 fi
 
@@ -47,14 +57,12 @@ StartupNotify=true
 EOF
 chmod +x "$HOME/.local/share/applications/freecad-launcher.desktop"
 
-# 4. SMART AUTO-INSTALL (Fix définitif pour curl | bash)
-# On vérifie si $0 est un fichier existant ET qu'il ne s'appelle pas "bash" ou "sh"
+# 4. SMART AUTO-INSTALL
 if [ -f "$0" ] && [[ "$0" != *"bash"* ]] && [[ "$0" != *"sh"* ]]; then
     if [ "$(readlink -f "$0")" != "$(readlink -f "$SCRIPT_PATH")" ]; then
         cp "$0" "$SCRIPT_PATH" && chmod +x "$SCRIPT_PATH"
     fi
 else
-    # Si lancé via curl, on assure la présence du script dans Applications
     if [ ! -f "$SCRIPT_PATH" ]; then
         curl -sSL https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh > "$SCRIPT_PATH"
         chmod +x "$SCRIPT_PATH"
@@ -88,7 +96,7 @@ else
     COL_STATUS="Status"
 fi
 
-# Check Status (Stable & Weekly)
+# Check Status
 CHECK_STABLE=$(find "$INSTALL_DIR" -maxdepth 1 -name ".*$STABLE_TAG*.AppImage" | wc -l)
 [ "$CHECK_STABLE" -gt 0 ] && STABLE_STATUS="$STATUS_OK" || STABLE_STATUS="$STATUS_NEW"
 
