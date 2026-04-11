@@ -42,8 +42,11 @@ curl -fsSL [https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main
 ### Option 2 : Manual
 
 #### 1. Download the script
+Use `curl` or `wget` to download the raw file:
 
-wget [https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/main/freecad_launcher.sh](https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/main/freecad_launcher.sh)
+```bash
+wget [https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh](https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh)
+```
 
 #### 2. Make it executable
 ```bash
@@ -55,7 +58,7 @@ chmod +x freecad_launcher.sh
 ./freecad_launcher.sh
 ```
 
-On first launch, the script will:
+### On first launch, the script will :
 
 * Create required directories
 * Download FreeCAD
