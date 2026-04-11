@@ -24,9 +24,6 @@ A Bash utility for Linux designed to manage, update, and launch both Stable and 
 - **Desktop Integration** 
   Creates a desktop entry in: ~/.local/share/applications
 
-- **API Resilience** 
-Fallback mechanisms to bypass GitHub API rate limits and allow offline launching.
-
 ---
 
 
