@@ -8,16 +8,16 @@ SCRIPT_PATH="$INSTALL_DIR/freecad_launcher.sh"
 ICON_PATH="$INSTALL_DIR/freecad_icon.png"
 REPO="FreeCAD/FreeCAD"
 
-# 1. DEPENDENCIES CHECK & AUTO-INSTALL (Blindé pour Arch/Cachy/Fedora/Ubuntu)
+# 1. DEPENDENCIES CHECK & AUTO-INSTALL 
 MISSING_DEPS=()
-# On vérifie les outils de base + libfuse (nécessaire pour lancer les AppImages)
+
 for cmd in jq zenity curl wget; do
     if ! command -v $cmd &> /dev/null; then
         MISSING_DEPS+=($cmd)
     fi
 done
 
-# Vérification spécifique pour libfuse2 (nommé différemment selon les distros)
+
 if ! ldconfig -p | grep -q "libfuse.so.2"; then
     FUSE_NEEDED=true
 else
