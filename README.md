@@ -76,14 +76,14 @@ The script is designed to be **Universal**. On the first run, it automatically d
 
 ## File Structure
 
-~/Applications/
+`~/Applications/
 ├── freecad_launcher.sh          # Main script
 ├── FreeCAD-stable.AppImage      # Symlink to latest stable
 ├── FreeCAD-weekly.AppImage      # Symlink to latest weekly
 └── freecad_icon.png             # Application icon
 
 ~/.local/share/applications/
-└── freecad-launcher.desktop     # Desktop shortcut
+└── freecad-launcher.desktop     # Desktop shortcut`
 
 ## License
 
