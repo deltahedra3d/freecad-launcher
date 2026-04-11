@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # FreeCAD Weekly Smart Launcher & Updater
-# Copyright (c) 2026 DELTAHEDRA
+# Copyright (c) 2026 deltahedra3d
 # Licensed under the MIT License
 
 # --- CONFIGURATION ---
@@ -12,7 +12,7 @@ ICON_PATH="$INSTALL_DIR/freecad_icon.png"
 FINAL_NAME="FreeCAD.AppImage"
 REPO="FreeCAD/FreeCAD"
 CURRENT_SCRIPT=$(readlink -f "$0")
-REQUIRED_SPACE=1024 # 1GB
+REQUIRED_SPACE=1024 # 1GB (in MB)
 
 # 1. DEPENDENCY CHECK & UNIVERSAL AUTO-INSTALL
 if ! command -v jq &> /dev/null; then
@@ -77,7 +77,7 @@ echo "       FREECAD SMART LAUNCHER"
 echo "=========================================="
 echo "Searching for the latest Weekly Build..."
 
-cd "$INSTALL_DIR"
+cd "$INSTALL_DIR" || exit
 
 URL=$(curl -s "https://api.github.com/repos/$REPO/releases" | jq -r '
   [ .[].assets[] | select(
@@ -91,11 +91,12 @@ if [ -z "$URL" ] || [ "$URL" == "null" ]; then
     echo "[!] Could not reach GitHub. Launching current version..."
     notify-send "FreeCAD" "Update check failed, launching offline..."
 else
-    # The real file is HIDDEN (starts with a dot)
-    REAL_FILENAME=".$((basename "$URL"))"
+    # Correctly parse the filename from the URL
+    FILENAME=$(basename "$URL")
+    REAL_FILENAME=".$FILENAME"
 
     if [ ! -f "$REAL_FILENAME" ]; then
-        echo "[*] NEW VERSION FOUND"
+        echo "[*] NEW VERSION FOUND: $FILENAME"
         notify-send "FreeCAD" "New version found! Downloading update..."
         
         FREE_SPACE=$(df -m "$INSTALL_DIR" | tail -1 | awk '{print $4}')
@@ -132,4 +133,4 @@ else
     echo "[!] FreeCAD executable not found!"
     read -p "Press enter to exit..."
 fi
-exit  
+exit
