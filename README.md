@@ -34,7 +34,8 @@ A Bash utility for Linux designed to manage, update, and launch both Stable and 
 Paste this command into your terminal to install and configure everything automatically:
 
 
-`curl -fsSL https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh | bash`
+```bash
+curl -fsSL [https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh](https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh) | bash
 
 ### Option 2 : Manual
 
