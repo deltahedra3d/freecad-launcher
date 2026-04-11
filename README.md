@@ -2,6 +2,13 @@
 
 This bash script automates the management of FreeCAD Weekly AppImages on Linux.
 
+## Universal Compatibility
+This script is designed to be **distro-agnostic**. It features an adaptive dependency manager that works on the vast majority of Linux distributions, including:
+* **Debian / Ubuntu / Mint / Pop!_OS** (using `apt`)
+* **Fedora / Red Hat / CentOS** (using `dnf`)
+* **Arch Linux / Manjaro** (using `pacman`)
+* **openSUSE** (using `zypper`)
+
 ## Features
 - **Auto-Update**: Checks GitHub for the latest Weekly build.
 - **Smart Link**: Uses a symlink so your shortcuts never break.

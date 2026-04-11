@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# FreeCAD Weekly Smart Launcher & Updater
+# Copyright (c) 2026 DELTAHEDRA
+# Licensed under the MIT License
+
 # --- CONFIGURATION ---
 INSTALL_DIR="$HOME/Applications"
 SCRIPT_PATH="$INSTALL_DIR/update_freecad.sh"
