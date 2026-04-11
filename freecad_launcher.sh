@@ -1,22 +1,21 @@
 #!/bin/bash
 
-# FreeCAD Smart Launcher (v4.8 - Multi-Distro Shield)
+# FreeCAD Smart Launcher (v4.9 - HD Icon & Multi-Distro Shield)
 # Copyright (c) 2026 deltahedra3d
 
 INSTALL_DIR="$HOME/Applications"
 SCRIPT_PATH="$INSTALL_DIR/freecad_launcher.sh"
-ICON_PATH="$INSTALL_DIR/freecad_icon.png"
+# Changement vers SVG pour une netteté parfaite sur CachyOS/KDE
+ICON_PATH="$INSTALL_DIR/freecad_icon.svg"
 REPO="FreeCAD/FreeCAD"
 
 # 1. DEPENDENCIES CHECK & AUTO-INSTALL 
 MISSING_DEPS=()
-
 for cmd in jq zenity curl wget; do
     if ! command -v $cmd &> /dev/null; then
         MISSING_DEPS+=($cmd)
     fi
 done
-
 
 if ! ldconfig -p | grep -q "libfuse.so.2"; then
     FUSE_NEEDED=true
@@ -31,7 +30,6 @@ if [ ${#MISSING_DEPS[@]} -ne 0 ] || [ "$FUSE_NEEDED" = true ]; then
     elif command -v dnf &> /dev/null; then
         sudo dnf install -y "${MISSING_DEPS[@]}" fuse-libs
     elif command -v pacman &> /dev/null; then
-        # -Sy est crucial sur Arch/CachyOS pour rafraîchir les dépôts avant install
         sudo pacman -Sy --noconfirm --needed "${MISSING_DEPS[@]}" fuse2
     elif command -v zypper &> /dev/null; then
         sudo zypper install -y "${MISSING_DEPS[@]}" fuse
@@ -41,7 +39,14 @@ fi
 # 2. PREPARATION
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$HOME/.local/share/applications"
-[ ! -f "$ICON_PATH" ] && wget -q "https://www.freecad.org/images/favicon.ico" -O "$ICON_PATH"
+
+# Nettoyage de l'ancienne icône floue si elle existe
+[ -f "$INSTALL_DIR/freecad_icon.png" ] && rm "$INSTALL_DIR/freecad_icon.png"
+
+# Téléchargement du logo SVG officiel (Vectoriel = Ultra net)
+if [ ! -f "$ICON_PATH" ]; then
+    wget -q "https://raw.githubusercontent.com/FreeCAD/FreeCAD/master/src/Gui/Icons/freecad.svg" -O "$ICON_PATH"
+fi
 
 # 3. FORCE DESKTOP LAUNCHER
 cat <<EOF > "$HOME/.local/share/applications/freecad-launcher.desktop"
