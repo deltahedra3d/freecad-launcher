@@ -33,7 +33,7 @@ Fallback mechanisms to bypass GitHub API rate limits and allow offline launching
 Paste this command into your terminal to install and configure everything automatically:
 
 
-`curl -fsSL [https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/main/freecad_launcher.sh](https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/main/freecad_launcher.sh)` 
+`curl -fsSL https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh | bash`
 
 ### 1. Download the script
 
@@ -41,11 +41,11 @@ wget [https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/mai
 
 ### 2. Make it executable
 
-chmod +x freecad_launcher.sh
+`chmod +x freecad_launcher.sh`
 
 ### 2. Run it
 
-./freecad_launcher.sh
+`./freecad_launcher.sh`
 
 On first launch, the script will:
 
@@ -53,18 +53,23 @@ Create required directories
 Download FreeCAD
 Set up a desktop shortcut
 
+---
+
 ## Dependencies
 
-The script will check and prompt installation if missing.
+** No manual installation required!**
 
-Required tools:
-curl/wget Network communication and downloading
-jq JSON processing for GitHub API data
-zenity Graphical interface for menus and progress bars
+The script is designed to be **Universal**. On the first run, it automatically detects your distribution's package manager and prompts to install any missing tools (`jq`, `zenity`, `curl`, `wget`).
 
+### Supported Package Managers:
+* **APT**: Debian, Ubuntu, Mint, Pop!_OS
+* **DNF**: Fedora, RHEL, CentOS
+* **PACMAN**: Arch Linux, Manjaro
+* **ZYPPER**: openSUSE
 
-Install on Debian / Ubuntu:
-sudo apt update && sudo apt install -y jq zenity curl wget
+> **Note**: You will simply be asked for your `sudo` password in the terminal during the first launch to allow the script to prepare your environment.
+
+---
 
 ## File Structure
 
