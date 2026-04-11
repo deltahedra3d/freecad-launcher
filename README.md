@@ -75,7 +75,7 @@ The script is designed to be **Universal**. On the first run, it automatically d
 ### Supported Package Managers:
 * **APT**: Debian, Ubuntu, Mint, Pop!_OS
 * **DNF**: Fedora, RHEL, CentOS
-* **PACMAN**: Arch Linux, Manjaro
+* **PACMAN**: Arch Linux, CachyOS, Manjaro
 * **ZYPPER**: openSUSE
 
 > **Note**: You will simply be asked for your `sudo` password in the terminal during the first launch to allow the script to prepare your environment.
