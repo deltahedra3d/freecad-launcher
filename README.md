@@ -25,13 +25,15 @@ Fallback mechanisms to bypass GitHub API rate limits and allow offline launching
 
 ---
 
+
 ## Installation
 
-Run in terminal : 
+### 🚀 Option 1: Quick Install (Recommended)
 
-''curl -fsSL https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh''
+Paste this command into your terminal to install and configure everything automatically:
 
-OR
+
+`curl -fsSL [https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/main/freecad_launcher.sh](https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/main/freecad_launcher.sh)` 
 
 ### 1. Download the script
 
