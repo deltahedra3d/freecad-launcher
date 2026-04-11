@@ -37,7 +37,7 @@ Paste this command into your terminal to install and configure everything automa
 
 
 ```bash
-curl -fsSL [https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh](https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh) | bash
+curl -fsSL https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh | bash
 ```
 ### Option 2 : Manual
 
@@ -45,7 +45,7 @@ curl -fsSL [https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main
 Use `curl` or `wget` to download the raw file:
 
 ```bash
-wget [https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh](https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh)
+wget https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh
 ```
 
 #### 2. Make it executable
