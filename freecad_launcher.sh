@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# FreeCAD Smart Launcher (v4.6 - Stream Install & 4-Column Layout)
+# FreeCAD Smart Launcher (v4.7 - Final Stealth Install)
 # Copyright (c) 2026 deltahedra3d
 
 INSTALL_DIR="$HOME/Applications"
@@ -47,14 +47,14 @@ StartupNotify=true
 EOF
 chmod +x "$HOME/.local/share/applications/freecad-launcher.desktop"
 
-# 4. SMART AUTO-INSTALL (Fix pour curl | bash)
-if [ -f "$0" ]; then
-    # Cas classique : lancé depuis un fichier
+# 4. SMART AUTO-INSTALL (Fix définitif pour curl | bash)
+# On vérifie si $0 est un fichier existant ET qu'il ne s'appelle pas "bash" ou "sh"
+if [ -f "$0" ] && [[ "$0" != *"bash"* ]] && [[ "$0" != *"sh"* ]]; then
     if [ "$(readlink -f "$0")" != "$(readlink -f "$SCRIPT_PATH")" ]; then
         cp "$0" "$SCRIPT_PATH" && chmod +x "$SCRIPT_PATH"
     fi
 else
-    # Cas curl | bash : $0 n'est pas un fichier, on télécharge la source
+    # Si lancé via curl, on assure la présence du script dans Applications
     if [ ! -f "$SCRIPT_PATH" ]; then
         curl -sSL https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh > "$SCRIPT_PATH"
         chmod +x "$SCRIPT_PATH"
@@ -88,11 +88,10 @@ else
     COL_STATUS="Status"
 fi
 
-# Check Stable Status
+# Check Status (Stable & Weekly)
 CHECK_STABLE=$(find "$INSTALL_DIR" -maxdepth 1 -name ".*$STABLE_TAG*.AppImage" | wc -l)
 [ "$CHECK_STABLE" -gt 0 ] && STABLE_STATUS="$STATUS_OK" || STABLE_STATUS="$STATUS_NEW"
 
-# Check Weekly Status
 WEEKLY_FILENAME=$(echo "$WEEKLY_JSON" | jq -r '.assets[] | select(.name | contains("AppImage") and contains("x86_64") and (test("sha256|sig|zsync") | not)) | .name' | head -n 1)
 [ -f "$INSTALL_DIR/.$WEEKLY_FILENAME" ] && WEEKLY_STATUS="$STATUS_OK" || WEEKLY_STATUS="$STATUS_NEW"
 
@@ -122,7 +121,7 @@ update_version() {
     fi
 }
 
-# 7. MENU (4 Columns)
+# 7. MENU
 CHOICE=$(zenity --list --radiolist \
     --window-icon="$ICON_PATH" \
     --title="FreeCAD Launcher" \
