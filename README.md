@@ -29,14 +29,14 @@ A Bash utility for Linux designed to manage, update, and launch both Stable and 
 
 ## Installation
 
-### Option 1: Quick Install (Recommended)
+### Option 1 : Quick Install (Recommended)
 
 Paste this command into your terminal to install and configure everything automatically:
 
 
 `curl -fsSL https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh | bash`
 
-### Option 2: Manual
+### Option 2 : Manual
 
 #### 1. Download the script
 
@@ -60,7 +60,7 @@ On first launch, the script will:
 
 ## Dependencies
 
-** No manual installation required!**
+### No manual installation required
 
 The script is designed to be **Universal**. On the first run, it automatically detects your distribution's package manager and prompts to install any missing tools (`jq`, `zenity`, `curl`, `wget`).
 
