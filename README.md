@@ -44,12 +44,14 @@ curl -fsSL [https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main
 wget [https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/main/freecad_launcher.sh](https://github.com/deltahedra3d/freecad-weekly-launcher/raw/refs/heads/main/freecad_launcher.sh)
 
 #### 2. Make it executable
-
-`chmod +x freecad_launcher.sh`
+```bash
+chmod +x freecad_launcher.sh
+```
 
 #### 3. Run it
-
-`./freecad_launcher.sh`
+```bash
+./freecad_launcher.sh`
+```
 
 On first launch, the script will:
 
