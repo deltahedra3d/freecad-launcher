@@ -1,43 +1,17 @@
-# freecad-weekly-launcher
-FreeCAD Weekly Smart Launcher & Updater
-A smart Bash script for Linux designed to automate the downloading, updating, and launching of FreeCAD Weekly Builds (AppImage format).
+# FreeCAD Weekly Smart Launcher
 
-Why use this script?
-If you use FreeCAD Weekly builds, you know the drill: go to GitHub, find the latest release, download a huge file, make it executable, and manually update your menu shortcuts. This script turns that entire process into a single click.
+This bash script automates the management of FreeCAD Weekly AppImages on Linux.
 
-Key Features
-Auto-Update: Checks the official FreeCAD GitHub repository for the latest Weekly build every time you launch it.
+## Features
+- **Auto-Update**: Checks GitHub for the latest Weekly build.
+- **Smart Link**: Uses a symlink so your shortcuts never break.
+- **Desktop Integration**: Automatically creates a menu entry with the FreeCAD icon.
+- **Safety**: Checks for disk space before downloading and handles dependencies like `jq`.
+- **System Notifications**: Tells you when an update is being downloaded.
 
-Smart File Management:
+## How to use
+1. Download the script: `update_freecad.sh`
+2. Make it executable: `chmod +x update_freecad.sh`
+3. Run it: `./update_freecad.sh`
 
-Downloads new versions as hidden files to keep your folders clutter-free.
-
-Maintains a Symbolic Link (FreeCAD.AppImage) so your shortcuts always point to the newest version.
-
-Desktop Integration: Automatically generates a .desktop file and downloads the official icon so FreeCAD appears in your application menu.
-
-System Notifications: Sends native desktop notifications to keep you informed about download progress or potential issues.
-
-High Compatibility: Automatically detects and installs the jq dependency on most distributions (Ubuntu/Debian, Fedora, Arch, openSUSE).
-
-Safety First: Performs a disk space check before starting any download.
-
-Quick Start
-Download the script: Get the update_freecad.sh file.
-
-Make it executable:
-
-Bash
-chmod +x update_freecad.sh
-Run it:
-
-Bash
-./update_freecad.sh
-After the first run, FreeCAD will open, and you will find a "FreeCAD Weekly" entry in your system's application launcher for future use.
-
-Requirements
-curl & wget (usually pre-installed)
-
-jq (automatically installed by the script if missing)
-
-libnotify (for desktop notifications)
+After the first run, you can just launch FreeCAD from your application menu!
