@@ -5,7 +5,6 @@
 
 INSTALL_DIR="$HOME/Applications"
 SCRIPT_PATH="$INSTALL_DIR/freecad_launcher.sh"
-# Changement vers SVG pour une netteté parfaite sur CachyOS/KDE
 ICON_PATH="$INSTALL_DIR/freecad_icon.svg"
 REPO="FreeCAD/FreeCAD"
 
@@ -39,11 +38,7 @@ fi
 # 2. PREPARATION
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$HOME/.local/share/applications"
-
-# Nettoyage de l'ancienne icône floue si elle existe
 [ -f "$INSTALL_DIR/freecad_icon.png" ] && rm "$INSTALL_DIR/freecad_icon.png"
-
-# Téléchargement du logo SVG officiel (Vectoriel = Ultra net)
 if [ ! -f "$ICON_PATH" ]; then
     wget -q "https://raw.githubusercontent.com/FreeCAD/FreeCAD/master/src/Gui/Icons/freecad.svg" -O "$ICON_PATH"
 fi
