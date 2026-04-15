@@ -1,5 +1,5 @@
 #!/bin/bash
-# FreeCAD Smart Launcher (v6.3 - Pipe-safe + clean naming)
+# FreeCAD Smart Launcher (v6.4 - robust install fix)
 
 INSTALL_DIR="$HOME/Applications"
 SCRIPT_PATH="$INSTALL_DIR/freecad_launcher.sh"
@@ -55,18 +55,19 @@ EOF
 
 chmod +x "$HOME/.local/share/applications/freecad-launcher.desktop"
 
-# ====================== 4. SELF INSTALL (PIPE SAFE) ======================
-if [ ! -f "$SCRIPT_PATH" ]; then
-    echo "Installing launcher to $SCRIPT_PATH"
+# ====================== 4. SELF INSTALL (ROBUST) ======================
+echo "Installing launcher to $SCRIPT_PATH"
 
-    if [ -f "$0" ] && [ "$0" != "bash" ]; then
-        cp "$(readlink -f "$0")" "$SCRIPT_PATH"
-    else
-        curl -fsSL "$INSTALL_URL" -o "$SCRIPT_PATH"
-    fi
+SCRIPT_SOURCE="$(readlink -f "$0" 2>/dev/null)"
 
-    chmod +x "$SCRIPT_PATH"
+if [ -n "$SCRIPT_SOURCE" ] && [ -f "$SCRIPT_SOURCE" ]; then
+    cp "$SCRIPT_SOURCE" "$SCRIPT_PATH"
+else
+    echo "Detected pipe execution, downloading script..."
+    curl -fsSL "$INSTALL_URL" -o "$SCRIPT_PATH"
 fi
+
+chmod +x "$SCRIPT_PATH"
 
 # ====================== 5. FETCH INFO ======================
 ONLINE=true
@@ -126,7 +127,6 @@ update_version() {
         fi
     fi
 
-    # Symlink propre
     ln -sf "$HIDDEN_NAME" "$LINK_NAME"
 
     # Cleanup adapté
