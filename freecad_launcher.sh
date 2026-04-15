@@ -1,10 +1,11 @@
 #!/bin/bash
-# FreeCAD Smart Launcher (v6.2)
+# FreeCAD Smart Launcher (v6.3 - Pipe-safe + clean naming)
 
 INSTALL_DIR="$HOME/Applications"
 SCRIPT_PATH="$INSTALL_DIR/freecad_launcher.sh"
 ICON_PATH="$INSTALL_DIR/freecad_icon.svg"
 REPO="FreeCAD/FreeCAD"
+INSTALL_URL="https://raw.githubusercontent.com/deltahedra3d/freecad-launcher/main/freecad_launcher.sh"
 
 # ====================== 1. DEPENDENCIES ======================
 MISSING_DEPS=()
@@ -21,7 +22,6 @@ else
 fi
 
 if [ ${#MISSING_DEPS[@]} -ne 0 ] || [ "$FUSE_NEEDED" = true ]; then
-    echo "Installing missing dependencies..."
     if command -v apt &> /dev/null; then
         sudo apt update && sudo apt install -y "${MISSING_DEPS[@]}" libfuse2
     elif command -v dnf &> /dev/null; then
@@ -30,8 +30,6 @@ if [ ${#MISSING_DEPS[@]} -ne 0 ] || [ "$FUSE_NEEDED" = true ]; then
         sudo pacman -Sy --noconfirm --needed "${MISSING_DEPS[@]}" fuse2
     elif command -v zypper &> /dev/null; then
         sudo zypper install -y "${MISSING_DEPS[@]}" fuse
-    else
-        echo "Install manually: ${MISSING_DEPS[*]} libfuse2"
     fi
 fi
 
@@ -57,10 +55,17 @@ EOF
 
 chmod +x "$HOME/.local/share/applications/freecad-launcher.desktop"
 
-# ====================== 4. SELF INSTALL ======================
-CURRENT_PATH=$(readlink -f "$0")
-if [ "$CURRENT_PATH" != "$(readlink -f "$SCRIPT_PATH")" ]; then
-    cp "$0" "$SCRIPT_PATH" && chmod +x "$SCRIPT_PATH"
+# ====================== 4. SELF INSTALL (PIPE SAFE) ======================
+if [ ! -f "$SCRIPT_PATH" ]; then
+    echo "Installing launcher to $SCRIPT_PATH"
+
+    if [ -f "$0" ] && [ "$0" != "bash" ]; then
+        cp "$(readlink -f "$0")" "$SCRIPT_PATH"
+    else
+        curl -fsSL "$INSTALL_URL" -o "$SCRIPT_PATH"
+    fi
+
+    chmod +x "$SCRIPT_PATH"
 fi
 
 # ====================== 5. FETCH INFO ======================
@@ -73,7 +78,6 @@ if [ "$ONLINE" = true ] && [ -n "$STABLE_JSON" ]; then
     WEEKLY_JSON=$(curl -s --connect-timeout 5 "https://api.github.com/repos/$REPO/releases" | \
         jq -r '[.[] | select(.tag_name | test("weekly"; "i"))] | first')
 
-    WEEKLY_TAG=$(echo "$WEEKLY_JSON" | jq -r '.tag_name // "Unknown"')
     WEEKLY_DATE=$(echo "$WEEKLY_JSON" | jq -r '.published_at | split("T")[0] // "Unknown"')
 else
     STABLE_TAG="OFFLINE"
@@ -81,18 +85,15 @@ else
     ONLINE=false
 fi
 
-STATUS_NEW="🔴 UPDATE AVAIL."
-STATUS_OK="🟢 INSTALLED"
+STATUS_NEW="🔴 UPDATE"
+STATUS_OK="🟢 READY"
 
 # ====================== 6. UPDATE FUNCTION ======================
 update_version() {
     local type=$1
     cd "$INSTALL_DIR" || return 1
 
-    [ "$ONLINE" = false ] && {
-        zenity --info --text="Offline mode"
-        return 1
-    }
+    [ "$ONLINE" = false ] && return 1
 
     if [ "$type" = "stable" ]; then
         JSON="$STABLE_JSON"
@@ -104,13 +105,10 @@ update_version() {
 
     URL=$(echo "$JSON" | jq -r '.assets[] | select(.name | contains("AppImage") and contains("x86_64") and (test("sha256|sig|zsync") | not)) | .browser_download_url' | head -n1)
 
-    [ -z "$URL" ] && {
-        zenity --error --text="No AppImage found"
-        return 1
-    }
+    [ -z "$URL" ] && return 1
 
     FILENAME=$(basename "$URL")
-    HIDDEN_NAME=".FreeCAD-${type}-${FILENAME}"
+    HIDDEN_NAME=".$FILENAME"
     LINK_NAME="FreeCAD-${type}.AppImage"
 
     if [ ! -f "$HIDDEN_NAME" ]; then
@@ -128,11 +126,15 @@ update_version() {
         fi
     fi
 
-    # Symlink
+    # Symlink propre
     ln -sf "$HIDDEN_NAME" "$LINK_NAME"
 
-    # FIXED CLEANUP (only same type)
-    find . -name ".FreeCAD-${type}-*.AppImage" ! -name "$HIDDEN_NAME" -delete 2>/dev/null
+    # Cleanup adapté
+    if [ "$type" = "stable" ]; then
+        find . -name ".FreeCAD_*AppImage" ! -name "*weekly*" ! -name "$HIDDEN_NAME" -delete
+    else
+        find . -name ".FreeCAD_*weekly*AppImage" ! -name "$HIDDEN_NAME" -delete
+    fi
 }
 
 # ====================== 7. STATUS ======================
