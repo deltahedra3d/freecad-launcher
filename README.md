@@ -7,6 +7,13 @@ A Bash utility for Linux designed to manage, update, and launch both Stable and 
 <img width="723" height="460" alt="INTERFACE" src="https://github.com/user-attachments/assets/d2b4fd7c-86c1-4e87-a9d7-02d8165c7706" />
 <img width="723" height="auto" alt="INTERFACE_CACHYOS" src="https://github.com/user-attachments/assets/0a358f2e-9294-4742-9c49-e04f998c5b5e" />
 
+<img width="800" height="450" alt="video_1" src="https://github.com/user-attachments/assets/2ac6ba4b-943c-4fe8-906a-bf87a6e67d40" />
+
+
+
+
+
+
 ---
 
 ## Features
