@@ -86,7 +86,7 @@ if [ "$ONLINE" = false ]; then WEEKLY_STATUS="⚡ LOCAL"; else
     [ -f "$INSTALL_DIR/.$WEEKLY_FILENAME" ] && WEEKLY_STATUS="$STATUS_OK" || WEEKLY_STATUS="$STATUS_NEW"
 fi
 
-# 6. UPDATE FUNCTION
+# 6. UPDATE FUNCTION 
 update_version() {
     local type=$1
     local final_name="FreeCAD-$type.AppImage"
@@ -107,13 +107,12 @@ update_version() {
             wget "$URL" -O "$REAL_FILENAME" 2>&1 | stdbuf -oL sed -ur 's/^.* ([0-9]+)% .*$/\1/' | zenity --progress --window-icon="$ICON_PATH" --title="FreeCAD Launcher" --text="Downloading $FILENAME..." --auto-close --percentage=0
             chmod +x "$REAL_FILENAME"
             
-          
             if [ "$type" == "weekly" ]; then
-                find . -maxdepth 1 -name ".FreeCAD*weekly*" ! -name "$REAL_FILENAME" -delete
+                find . -maxdepth 1 \( -name ".FreeCAD*weekly*.AppImage" -o -name "FreeCAD*weekly*.AppImage" \) ! -name "$REAL_FILENAME" -delete
             else
-                find . -maxdepth 1 -name ".FreeCAD*" ! -name "*weekly*" ! -name "$REAL_FILENAME" -delete
+                find . -maxdepth 1 \( -name ".FreeCAD*.AppImage" -o -name "FreeCAD*.AppImage" \) ! -name "*weekly*" ! -name "$REAL_FILENAME" -delete
             fi
-            # -------------------
+            # ------------------------------
         fi
         ln -sf "$REAL_FILENAME" "$final_name"
     fi
