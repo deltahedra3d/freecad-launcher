@@ -71,21 +71,6 @@ To test and build FreeCAD pull requests, you'll also need a full FreeCAD build t
 
 **Your local changes are stashed.** Before checking out the PR branch, the launcher runs `git stash push -u` if your clone has uncommitted changes (untracked files included). You can get them back afterwards with `git stash list` / `git stash pop`. The build output is also logged to `~/.freecad_launcher_build.log`.
 
-## Building the AppImage
-
-The release AppImage is built with PyInstaller and `appimagetool` by `build_appimage.sh`. Run it inside an Ubuntu 22.04 container rather than on your main system: an AppImage built on an old glibc runs on recent distributions, the reverse is not true.
-
-```bash
-distrobox create -n build-ubuntu -i ubuntu:22.04
-distrobox enter build-ubuntu
-cd path/to/this/repo
-./build_appimage.sh
-```
-
-Optional variables: `VERSION=0.0.2` (used in the file name), `ICON_SRC=icon.png` (otherwise a placeholder icon is generated), `SKIP_APT=1` (don't install system packages).
-
-The script bundles Python, PySide6 (Essentials) and the Qt xcb libraries that PySide6 doesn't ship (notably `libxcb-cursor`). On a copy of the source it also adds the `certifi` CA bundle for HTTPS, and cleans `LD_LIBRARY_PATH` and the `APPDIR`/`APPIMAGE` variables for the programs the launcher starts (FreeCAD, F3D, zenity…) so they don't inherit the bundled libraries.
-
 ## Notes
 
 - All GitHub API calls are unauthenticated by default and therefore subject to GitHub's standard [rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) for anonymous requests.
