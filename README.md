@@ -11,6 +11,7 @@ A desktop helper for Linux to manage FreeCAD AppImages, test GitHub pull request
 
 - **AppImage management** — detect, download, launch, and delete FreeCAD **stable** and **weekly** builds automatically.
 - **Pull request testing** — fetch open PRs from `FreeCAD/FreeCAD`, view the conversation/comments, compile a PR with `cmake`/`ninja` (or with [`pixi`](https://pixi.sh) if that's how you build FreeCAD), and launch the resulting build directly.
+- **Guided full build with pixi** — no existing FreeCAD source tree? The **"Compile FreeCAD with pixi…"** button clones `FreeCAD/FreeCAD` (or reuses a folder you already have), then walks you through `pixi run configure` and `pixi run build` step by step, with a confirmation before each stage and a live progress dialog. `git` and `pixi` are installed automatically if missing (`git` via your distro's package manager with a privilege prompt; `pixi` via its official user-level installer, no root needed).
 - **Project library** — scan folders for CAD files, keep a recent-files list, and launch a project with a chosen FreeCAD version (including inside an already-running instance).
 - **3D preview** — quick preview of `.FCStd`, `.step`/`.stp`, `.iges`/`.igs`, `.stl`, and `.brep` files using [F3D](https://f3d.app/) (recommended), with `vtk` as a fallback and `cadquery-ocp` used to tessellate STEP/IGES files.
 - **Desktop integration** — create `.desktop` menu entries for installed versions.
@@ -30,13 +31,14 @@ If the AppImage refuses to start with a FUSE error (some Ubuntu/Linux Mint insta
 
 No Python, PySide6, or other installation is required — everything the app needs is bundled inside the AppImage.
 
-The only tools that are **not** bundled and must be installed separately on your system if you want to use the related features:
+The only tools that are **not** bundled — you don't need to pre-install them, though:
 
-| Tool | Needed for |
-|---|---|
-| `git`, `cmake` (and ideally `ninja`) | Compiling and testing a GitHub pull request |
-| [pixi](https://pixi.sh) | Compiling a pull request when FreeCAD is built with pixi (replaces `cmake`/`ninja`; `git` is still required) |
-| [F3D](https://f3d.app/) | 3D preview of project files |
+| Tool | Needed for | Auto-install |
+|---|---|---|
+| `git` | Compiling/testing a PR, or a full pixi build | ✅ launcher offers to install it via your distro's package manager (asks for admin privileges) |
+| [pixi](https://pixi.sh) | Building FreeCAD with pixi instead of cmake/ninja | ✅ launcher offers to install it via the official user-level installer (no root needed) |
+| `cmake` (and ideally `ninja`) | Compiling a PR the classic way | ❌ install manually if you don't use pixi |
+| [F3D](https://f3d.app/) | 3D preview of project files | ❌ install manually |
 
 On first run, the launcher creates its install folder at `~/Applications/FreeCAD` (configurable from the app), where it stores downloaded AppImages, `launcher_config.json`, and `time_tracker.json`.
 
@@ -67,7 +69,7 @@ To test and build FreeCAD pull requests, you'll also need a full FreeCAD build t
 3. Click **Build** — the launcher runs `git fetch origin pull/<PR>/head`, configures with `cmake` (using `ninja` if available), and builds with your machine's CPU core count.
 4. Click **Launch** to run the compiled build, optionally opening a project from your library with it.
 
-**Building with pixi.** If you compile FreeCAD with [pixi](https://pixi.sh), tick **Build with pixi** in the PR section. The launcher then runs `pixi run configure` and `pixi run build` in your source folder instead of calling `cmake` directly. The option is off by default: upstream FreeCAD always ships a `pixi.toml`, so its presence alone doesn't switch the build. If `cmake` isn't installed but `pixi` and a `pixi.toml` are available, the launcher falls back to pixi automatically. The compiled executable is looked up in `build/debug/bin`, `build/release/bin` and `build/bin`.
+**Building with pixi.** If you compile FreeCAD with [pixi](https://pixi.sh), tick **Use pixi to build PRs** in the PR section. This is separate from the **"Compile FreeCAD with pixi…"** button described above under Features, which does a full guided clone + build rather than testing a specific PR. The launcher then runs `pixi run configure` and `pixi run build` in your source folder instead of calling `cmake` directly. The option is off by default: upstream FreeCAD always ships a `pixi.toml`, so its presence alone doesn't switch the build. If `cmake` isn't installed but `pixi` and a `pixi.toml` are available, the launcher falls back to pixi automatically. The compiled executable is looked up in `build/debug/bin`, `build/release/bin` and `build/bin`.
 
 **Your local changes are stashed.** Before checking out the PR branch, the launcher runs `git stash push -u` if your clone has uncommitted changes (untracked files included). You can get them back afterwards with `git stash list` / `git stash pop`. The build output is also logged to `~/.freecad_launcher_build.log`.
 
