@@ -3951,6 +3951,61 @@ class FreeCADLauncher(QMainWindow):
             build_dir = os.path.join(src_dir, "build")
         return build_dir, os.path.join(build_dir, "bin", exe_name)
 
+    def find_pr_exe(self, src_dir):
+        """
+        Newest existing FreeCAD executable among the known build layouts.
+        pixi's default preset (`pixi run build`) writes to build/relWithDebInfo,
+        which get_pr_exe_path() does not look at.
+        """
+        exe_name = "FreeCAD.exe" if IS_WINDOWS else "FreeCAD"
+        found = []
+        for sub in ("relWithDebInfo", "debug", "release"):
+            cand = os.path.join(src_dir, "build", sub, "bin", exe_name)
+            if os.path.isfile(cand):
+                found.append(cand)
+        cand = os.path.join(src_dir, "build", "bin", exe_name)
+        if os.path.isfile(cand):
+            found.append(cand)
+        if not found:
+            return self.get_pr_exe_path(src_dir)[1]
+        return max(found, key=os.path.getmtime)
+
+    @staticmethod
+    def _pixi_task_for_exe(exe_path):
+        """Map a build folder to the matching FreeCAD pixi task."""
+        norm = exe_path.replace("\\", "/").lower()
+        if "/build/debug/" in norm:
+            return "freecad-debug"
+        if "/build/release/" in norm:
+            return "freecad-release"
+        return "freecad-rel-with-deb-info"  # relWithDebInfo (pixi default)
+
+    def _pixi_cmd_for_exe(self, exe_path):
+        """
+        (["pixi", "run", <task>], src_dir) when exe_path is a pixi-built FreeCAD,
+        else (None, None). A pixi build only runs inside its pixi environment.
+        """
+        m = re.search(
+            r"^(.*?)[/\\]build[/\\](relWithDebInfo|debug|release)[/\\]bin[/\\]",
+            exe_path or "", re.IGNORECASE,
+        )
+        if not m:
+            return None, None
+        src_dir = m.group(1)
+        if not os.path.isfile(os.path.join(src_dir, "pixi.toml")):
+            return None, None
+        try:
+            self._refresh_which_path()
+        except Exception:
+            pass
+        if not shutil.which("pixi"):
+            return None, None
+        # relWithDebInfo is pixi's own default preset; debug/release can also be
+        # a plain cmake build, so only use pixi there if the user opted in.
+        if m.group(2).lower() != "relwithdebinfo" and not self._source_uses_pixi(src_dir):
+            return None, None
+        return ["pixi", "run", self._pixi_task_for_exe(exe_path)], src_dir
+
     def _check_build_dependencies(self, src_dir=None):
         missing = []
         if not shutil.which("git"):
@@ -4192,16 +4247,7 @@ class FreeCADLauncher(QMainWindow):
                         env=build_env,
                     )
 
-                _, exe_path = self.get_pr_exe_path(src_dir)
-                if not os.path.exists(exe_path):
-                    for alt in (
-                        os.path.join(src_dir, "build", "debug", "bin", "FreeCAD.exe" if IS_WINDOWS else "FreeCAD"),
-                        os.path.join(src_dir, "build", "release", "bin", "FreeCAD.exe" if IS_WINDOWS else "FreeCAD"),
-                        os.path.join(src_dir, "build", "bin", "FreeCAD.exe" if IS_WINDOWS else "FreeCAD"),
-                    ):
-                        if os.path.isfile(alt):
-                            exe_path = alt
-                            break
+                exe_path = self.find_pr_exe(src_dir)
 
                 if os.path.exists(exe_path):
                     log_build(f"Build succeeded — launching {exe_path}")
@@ -4264,21 +4310,46 @@ class FreeCADLauncher(QMainWindow):
         if not pr_num or not src_dir:
             QMessageBox.warning(self, "Warning", "Please select or enter a valid PR number.")
             return
-        _, exe_path = self.get_pr_exe_path(src_dir)
-        if not os.path.exists(exe_path):
-            alt_path = os.path.join(src_dir, "build", "bin", "FreeCAD.exe" if IS_WINDOWS else "FreeCAD")
-            if os.path.exists(alt_path):
-                exe_path = alt_path
+        exe_path = self.find_pr_exe(src_dir)
         if os.path.exists(exe_path):
             self.launch_compiled_pr_instance(exe_path, pr_num)
         else:
             QMessageBox.critical(self, "Error", f"No executable found for PR #{pr_num}.\nCompile it at least once first!")
 
     def launch_compiled_pr_instance(self, exe_path, pr_num):
-        self.lbl_pr_status.setText(f"PR #{pr_num} successfully compiled & launched!")
+        self.lbl_pr_status.setText(f"Launching PR #{pr_num}...")
+        try:
+            self._refresh_which_path()
+        except Exception:
+            pass
         env = os.environ.copy()
         pr_start_time = time.time()
-        pr_process = subprocess.Popen([exe_path], env=env)
+        # A pixi-built FreeCAD needs its pixi environment (Qt/OCCT/Python DLLs on
+        # PATH). Starting build/.../FreeCAD.exe directly fails silently, so go
+        # through `pixi run freecad-*` (which also runs `cmake --install`).
+        pixi_cmd, pixi_cwd = self._pixi_cmd_for_exe(exe_path)
+        if pixi_cmd:
+            cmd, cwd = pixi_cmd, pixi_cwd
+            env = sanitize_build_env(env)
+        else:
+            cmd, cwd = [exe_path], None
+        log_path = os.path.join(USER_HOME, ".freecad_launcher_pr_launch.log")
+        try:
+            logf = open(log_path, "w", encoding="utf-8", errors="replace")
+        except Exception:
+            logf = None
+        try:
+            pr_process = subprocess.Popen(
+                cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                stdout=logf if logf else None,
+                stderr=subprocess.STDOUT if logf else None,
+            )
+        except Exception as e:
+            if logf:
+                logf.close()
+            self.lbl_pr_status.setText(f"Could not launch PR #{pr_num}")
+            self.show_copyable_error(f"Launch Error - PR #{pr_num}", f"{' '.join(cmd)}\n\n{e}")
+            return
         stat_key = self.get_stat_key(f"PR #{pr_num}")
 
         def finish():
@@ -4286,6 +4357,23 @@ class FreeCADLauncher(QMainWindow):
                 self._wait_session_end(pr_process, exe_path)
             except Exception as e:
                 print(f"[stats] PR wait failed: {e}", flush=True)
+            try:
+                if logf:
+                    logf.close()
+                if (pr_process.returncode not in (0, None)
+                        and time.time() - pr_start_time < 60):
+                    tail = ""
+                    try:
+                        with open(log_path, "r", encoding="utf-8", errors="replace") as lf:
+                            tail = "".join(lf.readlines()[-40:]).strip()
+                    except Exception:
+                        pass
+                    self.sig_show_error.emit(
+                        f"PR #{pr_num} exited immediately (code {pr_process.returncode})",
+                        f"{' '.join(cmd)}\n\n{tail}\n\nLog: {log_path}",
+                    )
+            except Exception as e:
+                print(f"[PR launch] report failed: {e}", flush=True)
             self._record_session(stat_key, pr_start_time, count_launch=True)
 
         if self.var_autoclose:
@@ -5126,8 +5214,20 @@ class FreeCADLauncher(QMainWindow):
             self.download_sizes = {}
             for rel in releases:
                 tag = rel["tag_name"]
+                if rel.get("draft"):
+                    continue
+                # Weekly = strictly tags "weekly-YYYY.MM.DD". Other dev/experimental
+                # tags are ignored (they used to leak into the weekly list).
+                is_weekly_rel = bool(re.fullmatch(r"weekly-\d{4}\.\d{2}\.\d{2}", tag.strip(), re.IGNORECASE))
+                if not is_weekly_rel and ("weekly" in tag.lower() or "dev" in tag.lower()):
+                    continue
                 for asset in rel["assets"]:
                     name = asset["name"]
+                    if is_weekly_rel:
+                        low = name.lower()
+                        # keep only the official weekly bundle, not debug/experimental variants
+                        if "weekly" not in low or any(k in low for k in ("experimental", "debug", "symbols")):
+                            continue
                     if IS_WINDOWS:
                         is_match = (
                             name.lower().endswith((".7z", ".zip"))
@@ -5139,7 +5239,7 @@ class FreeCADLauncher(QMainWindow):
                     if is_match:
                         self.download_urls[name] = asset["browser_download_url"]
                         self.download_sizes[name] = asset.get("size")
-                        if "weekly" in tag.lower() or "dev" in tag.lower():
+                        if is_weekly_rel:
                             weeklys.append(name)
                         else:
                             stables.append(name)
@@ -6025,6 +6125,12 @@ class FreeCADLauncher(QMainWindow):
             cmd.append(project_path)
 
         if IS_WINDOWS:
+            # pixi-built PR: must run inside the pixi environment.
+            pixi_cmd, pixi_cwd = self._pixi_cmd_for_exe(app_path)
+            if pixi_cmd:
+                return subprocess.Popen(
+                    pixi_cmd + cmd[1:], cwd=pixi_cwd, env=sanitize_build_env(env)
+                )
             # No AppImage/FUSE on Windows: launch the .exe directly, no fallback needed.
             return subprocess.Popen(cmd, env=env)
 
@@ -6223,11 +6329,7 @@ class FreeCADLauncher(QMainWindow):
                 "No valid FreeCAD source folder is set.\nSet it in the \"TEST A GITHUB PULL REQUEST\" section first."
             )
             return
-        _, exe_path = self.get_pr_exe_path(src_dir)
-        if not os.path.exists(exe_path):
-            alt_path = os.path.join(src_dir, "build", "bin", "FreeCAD.exe" if IS_WINDOWS else "FreeCAD")
-            if os.path.exists(alt_path):
-                exe_path = alt_path
+        exe_path = self.find_pr_exe(src_dir)
         if not os.path.exists(exe_path):
             QMessageBox.critical(self, "Error", "No compiled PR executable found.\nBuild a PR at least once first!")
             return
