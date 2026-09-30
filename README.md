@@ -3,7 +3,7 @@
 A desktop helper for **Linux** and **Windows** to manage FreeCAD builds, test GitHub pull requests, and browse local projects, all from one window.
 
 > ⚠️ FreeCAD builds are downloaded directly from the official [FreeCAD GitHub releases](https://github.com/FreeCAD/FreeCAD).
-> This is an unofficial launcher, not affiliated with the FreeCAD project.
+
 
 <img width="1278" height="846" alt="DARK" src="https://github.com/user-attachments/assets/a4ad4011-6299-48d5-a29e-7a5f3558bafb" />
 <img width="1280" height="848" alt="LIGHT" src="https://github.com/user-attachments/assets/b9510acb-e0bb-4a46-b25d-d926fc78f740" />
