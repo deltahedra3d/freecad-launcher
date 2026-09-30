@@ -3,7 +3,7 @@
 FreeCAD Smart Launcher (PySide6)
 
 Manage FreeCAD AppImages, test GitHub pull requests, and browse local projects.
-Linux desktop helper — not affiliated with the FreeCAD project.
+Windows desktop helper — not affiliated with the FreeCAD project.
 """
 
 # Optional runtime deps for 3D view: f3d (recommended), vtk, cadquery-ocp
