@@ -3,7 +3,7 @@
 A desktop helper for **Linux** and **Windows** to manage FreeCAD builds, test GitHub pull requests, and browse local projects, all from one window.
 
 > ⚠️ FreeCAD builds are downloaded directly from the official [FreeCAD GitHub releases](https://github.com/FreeCAD/FreeCAD).
-
+> This is an unofficial launcher, not affiliated with the FreeCAD project.
 
 <img width="1278" height="846" alt="DARK" src="https://github.com/user-attachments/assets/a4ad4011-6299-48d5-a29e-7a5f3558bafb" />
 <img width="1280" height="848" alt="LIGHT" src="https://github.com/user-attachments/assets/b9510acb-e0bb-4a46-b25d-d926fc78f740" />
@@ -55,7 +55,7 @@ No Python, PySide6, or other installation is required: everything the app needs 
 
 Download the Windows build from the Releases page and run it. No Python or PySide6 installation is required.
 
-FreeCAD is distributed for Windows as a portable `.7z` archive. The launcher downloads it and extracts it for you, using **7-Zip** if it finds it (fastest, handles very long paths) and falling back to the built-in `py7zr` library otherwise.
+FreeCAD is distributed for Windows as a portable `.7z` archive. The launcher downloads it and extracts it for you. The official archives use the BCJ2 filter, which the `py7zr` Python library cannot read, so extraction is done with 7-Zip: an installed copy is used if found, otherwise the launcher downloads the small stand-alone `7zr.exe` (from the official [7-Zip GitHub releases](https://github.com/ip7z/7zip/releases), with [7-zip.org](https://www.7-zip.org/) as a fallback) into `<install folder>\tools` the first time.
 
 > 💡 If extraction fails with a "path too long" error, enable Windows long paths or set the install folder closer to the drive root (e.g. `C:\FC`).
 
@@ -73,7 +73,7 @@ The only tools that are **not** bundled are listed below. You don't need to pre-
 | [pixi](https://pixi.sh) | Building FreeCAD with pixi instead of cmake/ninja | ✅ official user-level installer (no root needed) | ✅ official PowerShell installer (no admin needed) |
 | `cmake` + `ninja` | Compiling a PR the classic way | ❌ install manually (`ninja` recommended) | ❌ install manually (`ninja` **required**, e.g. `pip install ninja`) |
 | Visual Studio Build Tools | Compiling on Windows | n/a | ❌ install manually. Located automatically with `vswhere` |
-| [7-Zip](https://www.7-zip.org/) | Extracting FreeCAD `.7z` archives | n/a | Optional (recommended). Falls back to `py7zr` |
+| [7-Zip](https://www.7-zip.org/) | Extracting FreeCAD `.7z` archives | n/a | ✅ uses your installed 7-Zip, or auto-downloads `7zr.exe` (needs internet access to github.com or 7-zip.org) |
 | [F3D](https://f3d.app/) | 3D view of project files | ❌ install manually | n/a |
 
 ## Running from source
@@ -100,7 +100,7 @@ pip install vtk cadquery-ocp
 **Windows**
 
 ```powershell
-pip install PySide6 py7zr
+pip install PySide6
 python freecad_smart_launcher_windows.py
 ```
 
@@ -136,6 +136,7 @@ To test and build FreeCAD pull requests, you'll also need a full FreeCAD build t
 - Time tracking only counts sessions started from the launcher (not from a menu entry or shortcut). Linux ignores sessions shorter than 5 seconds; on Windows every launch is counted and time is added for sessions longer than 2 seconds.
 - With **Close launcher on launch** enabled, the window closes but the launcher process stays alive in the background until FreeCAD exits, so opening a second launcher in the meantime shows the "already open" message.
 - On Linux systems without FUSE, the launcher retries with `--appimage-extract-and-run`; sessions started through that fallback are not counted in the statistics.
+- On Windows, errors during download/extraction are shown in a dialog and written to `~/.freecad_launcher.log`, which is useful when reporting a problem since the packaged `.exe` has no console.
 - On Windows, if the FreeCAD process you started exits right after spawning the real GUI, the launcher keeps watching for `FreeCAD.exe` in the same install folder so the session time is still recorded.
 
 ## License
