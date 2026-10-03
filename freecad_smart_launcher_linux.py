@@ -2867,7 +2867,7 @@ class FreeCADLauncher(QMainWindow):
         self.pr_fav_layout = QVBoxLayout(self.pr_fav_inner)
         self.pr_fav_layout.setAlignment(Qt.AlignTop)
         self.pr_fav_scroll.setWidget(self.pr_fav_inner)
-        self.pr_tabs.addTab(self.pr_fav_scroll, "Favoris")
+        self.pr_tabs.addTab(self.pr_fav_scroll, "Favorites")
 
         pr_lay.addWidget(self.pr_tabs, 1)
 
