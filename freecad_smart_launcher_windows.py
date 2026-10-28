@@ -2,7 +2,7 @@
 """
 FreeCAD Smart Launcher (PySide6)
 
-Manage FreeCAD AppImages, test GitHub pull requests, and browse local projects.
+Manage FreeCAD Portable, test GitHub pull requests, and browse local projects.
 Windows desktop helper — not affiliated with the FreeCAD project.
 """
 
@@ -446,11 +446,11 @@ def _github_get(url, timeout=12):
         return json.loads(response.read().decode())
 
 from PySide6.QtCore import (
-    Qt, QSize, QTimer, QThread, Signal, Slot, QObject, QRect, QPointF, QEvent
+    Qt, QSize, QTimer, QThread, Signal, Slot, QObject, QRect, QRectF, QPointF, QEvent
 )
 from PySide6.QtGui import (
     QFont, QColor, QPalette, QIcon, QPixmap, QImage, QPainter, QPen, QBrush,
-    QAction, QCursor, QFontDatabase, QPolygonF, QTextCursor
+    QAction, QCursor, QFontDatabase, QPolygonF, QTextCursor, QConicalGradient
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -1280,6 +1280,105 @@ def make_qss(is_dark: bool) -> str:
     """
 
 
+# ---------- Launcher self-update ----------
+
+# Bump LAUNCHER_VERSION at every release (same number as the GitHub tag / .exe asset name).
+LAUNCHER_VERSION = "0.0.4"
+LAUNCHER_REPO = "deltahedra3d/freecad-launcher"
+LAUNCHER_ASSET_PREFIX = "FreeCAD_Smart_Launcher"
+LAUNCHER_ASSET_SUFFIX = "windows-x86_64.exe"
+
+
+def _parse_launcher_version(text):
+    """'freecad-launcher-0.0.4' / '0.0.4' -> (0, 0, 4); None when no version found."""
+    m = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", text or "")
+    return tuple(int(x or 0) for x in m.groups()) if m else None
+
+
+def find_launcher_update(current_version):
+    """Newest published launcher .exe newer than current_version, or None.
+
+    Returns {"version", "tag", "name", "url", "size"}.
+    """
+    releases = _github_get(
+        f"https://api.github.com/repos/{LAUNCHER_REPO}/releases?per_page=15", timeout=15
+    )
+    current = _parse_launcher_version(current_version) or (0, 0, 0)
+    best, best_ver = None, current
+    for rel in releases if isinstance(releases, list) else []:
+        if rel.get("draft") or rel.get("prerelease"):
+            continue
+        ver = _parse_launcher_version(rel.get("tag_name", ""))
+        if not ver or ver <= best_ver:
+            continue
+        for asset in rel.get("assets", []):
+            name = asset.get("name", "")
+            if name.startswith(LAUNCHER_ASSET_PREFIX) and name.endswith(LAUNCHER_ASSET_SUFFIX):
+                best_ver = ver
+                best = {
+                    "version": ".".join(str(x) for x in ver),
+                    "tag": rel.get("tag_name", ""),
+                    "name": name,
+                    "url": asset.get("browser_download_url"),
+                    "size": asset.get("size"),
+                }
+                break
+    return best
+
+
+class LauncherUpdateButton(QPushButton):
+    """Footer button. While 'attention' is on, a green arc runs around its border."""
+
+    GREEN = QColor("#2ecc71")
+
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self._angle = 0.0
+        self._attention = False
+        self._timer = QTimer(self)
+        self._timer.setInterval(25)
+        self._timer.timeout.connect(self._tick)
+
+    def set_attention(self, on):
+        on = bool(on)
+        if on == self._attention:
+            return
+        self._attention = on
+        if on:
+            self._timer.start()
+        else:
+            self._timer.stop()
+        self.update()
+
+    def _tick(self):
+        if self.isVisible():
+            self._angle = (self._angle - 4.0) % 360.0  # ~2.25 s per turn
+            self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not (self._attention and self.isEnabled()):
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        rect = QRectF(self.rect()).adjusted(1.0, 1.0, -1.0, -1.0)
+        # faint static ring + a bright comet running around it
+        ring = QColor(self.GREEN)
+        ring.setAlpha(70)
+        painter.setPen(QPen(ring, 1.5))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(rect, 5, 5)
+        head, tail = QColor(self.GREEN), QColor(self.GREEN)
+        tail.setAlpha(0)
+        grad = QConicalGradient(rect.center(), self._angle)
+        grad.setColorAt(0.0, head)
+        grad.setColorAt(0.42, tail)
+        grad.setColorAt(1.0, tail)
+        painter.setPen(QPen(QBrush(grad), 2.4))
+        painter.drawRoundedRect(rect, 5, 5)
+        painter.end()
+
+
 # ---------- Helpers (unchanged logic) ----------
 
 def acquire_single_instance_lock():
@@ -1367,29 +1466,87 @@ def pick_existing_directory(parent, start_dir, title="Select Directory"):
     return chosen if chosen else None
 
 
+_PRE_RANK = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2}
+_STABLE_RE = re.compile(
+    r"(?<![A-Za-z0-9.])(\d+)\.(\d+)(?:\.(\d+))?(?:[._-]?(alpha|beta|rc|a|b)[._-]?(\d+)?)?(?![A-Za-z0-9])",
+    re.I,
+)
+
+
+def parse_stable_version(filename):
+    """'FreeCAD_26.3rc1-...' -> (26, 3, 0, 'rc', 1); None if no X.Y[.Z] found.
+
+    Handles both the old 1.1.4 scheme and the new 26.3 / 27.1 scheme.
+    """
+    m = _STABLE_RE.search(os.path.basename(filename))
+    if not m:
+        return None
+    patch = int(m.group(3)) if m.group(3) else 0
+    pre = m.group(4).lower() if m.group(4) else None
+    pre_num = int(m.group(5)) if m.group(5) else 0
+    return int(m.group(1)), int(m.group(2)), patch, pre, pre_num
+
+
+def is_prerelease_name(filename):
+    """True for release candidates / betas / alphas (26.3rc1, 27.1beta2...)."""
+    if "weekly" in filename.lower():
+        return False
+    v = parse_stable_version(filename)
+    return bool(v and v[3])
+
+
+def drop_obsolete_rcs(rcs, stables):
+    """Hide release candidates once their final release is out.
+
+    An RC stays offered only while it is newer than the newest final release:
+    26.3rc2 disappears when 26.3 is published, 27.1rc1 shows up later on.
+    """
+    finals = [parse_stable_version(n) for n in stables]
+    finals = [v[:3] for v in finals if v and not v[3]]
+    if not finals:
+        return list(rcs)
+    newest = max(finals)
+    kept = []
+    for name in rcs:
+        v = parse_stable_version(name)
+        if v and v[:3] <= newest:
+            continue
+        kept.append(name)
+    return kept
+
+
+def version_kind(filename):
+    """'weekly' (weekly/dev builds), 'rc' (pre-releases) or 'stable'."""
+    low = filename.lower()
+    if "weekly" in low or "dev" in low:
+        return "weekly"
+    if is_prerelease_name(filename):
+        return "rc"
+    return "stable"
+
+
 def extract_version_key(filename):
-    match = re.search(r"(\d+\.\d+\.\d+(?:\.\d+)?)", filename)
-    if match:
-        return match.group(1)
-    match_date = re.search(r"(\d{4}[.-]\d{2}[.-]\d{2})", filename)
-    if match_date:
-        return match_date.group(1).replace("-", ".")
-    return None
+    if "weekly" not in filename.lower():
+        v = parse_stable_version(filename)
+        if v:
+            major, minor, patch, pre, pre_num = v
+            key = f"{major}.{minor}" + (f".{patch}" if patch else "")
+            return key + (f"{pre}{pre_num}" if pre else "")
+    m = re.search(r"(\d{4}[.-]\d{2}[.-]\d{2})", filename)
+    return m.group(1).replace("-", ".") if m else None
 
 
 def version_sort_key(filename):
-    key = extract_version_key(filename)
-    if not key:
-        return (0, 0, 0, 0, filename)
-    parts = []
-    for p in key.split("."):
-        try:
-            parts.append(int(p))
-        except ValueError:
-            parts.append(0)
-    while len(parts) < 4:
-        parts.append(0)
-    return tuple(parts[:4]) + (filename,)
+    if "weekly" not in filename.lower():
+        v = parse_stable_version(filename)
+        if v:
+            major, minor, patch, pre, pre_num = v
+            final = 0 if pre else 1  # 26.3 > 26.3rc2 > 26.3rc1
+            return (major, minor, patch, final, _PRE_RANK.get(pre, 0), pre_num, filename)
+    m = re.search(r"(\d{4})[.-](\d{2})[.-](\d{2})", filename)
+    if m:
+        return (*map(int, m.groups()), 1, 0, 0, filename)
+    return (0, 0, 0, 0, 0, 0, filename)
 
 
 def disable_freecad_start_page():
@@ -1572,144 +1729,6 @@ def run_freecad_console_script(app_path, script_path, timeout=60):
         except Exception:
             pass
     return False
-
-
-def export_fcstd_to_temp_cad(app_path, filepath, timeout=120):
-    """Export a .FCStd to STEP, IGES, or STL for F3D. Return path or None."""
-    if not app_path or not version_exists(app_path):
-        return None
-    if not filepath or not os.path.isfile(filepath):
-        return None
-
-    app_path = resolve_exe(app_path)
-    filepath = os.path.abspath(filepath)
-    cache_root = os.path.join(USER_HOME, ".cache", "freecad_smart_launcher", "f3d_exports")
-    os.makedirs(cache_root, exist_ok=True)
-    stamp = abs(hash((filepath, os.path.getmtime(filepath)))) % (10**10)
-    base = os.path.splitext(os.path.basename(filepath))[0]
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", base)[:40] or "export"
-    step_path = os.path.join(cache_root, f"{safe}_{stamp}.step")
-    iges_path = os.path.join(cache_root, f"{safe}_{stamp}.iges")
-    stl_path = os.path.join(cache_root, f"{safe}_{stamp}.stl")
-    macro_path = os.path.join(cache_root, f"{safe}_{stamp}_export_cad.py")
-
-    for p in (step_path, iges_path, stl_path):
-        if os.path.isfile(p) and os.path.getsize(p) > 80:
-            return p
-
-    lines = [
-        "import sys",
-        "import os",
-        "import FreeCAD as App",
-        "import Part",
-        "fcstd = %r" % filepath,
-        "out_step = %r" % step_path,
-        "out_iges = %r" % iges_path,
-        "out_stl = %r" % stl_path,
-        "doc = None",
-        "written = None",
-        "try:",
-        "    doc = App.open(fcstd)",
-        "    shapes = []",
-        "    objs = []",
-        "    for o in doc.Objects:",
-        "        shape = getattr(o, 'Shape', None)",
-        "        if shape is None or shape.isNull():",
-        "            continue",
-        "        # Skip empty construction geometry when possible",
-        "        try:",
-        "            if hasattr(shape, 'isNull') and shape.isNull():",
-        "                continue",
-        "        except Exception:",
-        "            pass",
-        "        shapes.append(shape)",
-        "        objs.append(o)",
-        "    if not shapes:",
-        "        raise RuntimeError('No shapes found in document')",
-        "    compound = shapes[0] if len(shapes) == 1 else Part.makeCompound(shapes)",
-        "    # 1) STEP (best for F3D solid view)",
-        "    try:",
-        "        compound.exportStep(out_step)",
-        "        if os.path.isfile(out_step) and os.path.getsize(out_step) > 80:",
-        "            written = out_step",
-        "    except Exception as e:",
-        "        sys.stderr.write('STEP export failed: %s\\n' % e)",
-        "    if written is None:",
-        "        try:",
-        "            Part.export(objs, out_step)",
-        "            if os.path.isfile(out_step) and os.path.getsize(out_step) > 80:",
-        "                written = out_step",
-        "        except Exception as e:",
-        "            sys.stderr.write('Part.export STEP failed: %s\\n' % e)",
-        "    # 2) IGES fallback",
-        "    if written is None:",
-        "        try:",
-        "            compound.exportIges(out_iges)",
-        "            if os.path.isfile(out_iges) and os.path.getsize(out_iges) > 80:",
-        "                written = out_iges",
-        "        except Exception as e:",
-        "            sys.stderr.write('IGES export failed: %s\\n' % e)",
-        "    if written is None:",
-        "        try:",
-        "            Part.export(objs, out_iges)",
-        "            if os.path.isfile(out_iges) and os.path.getsize(out_iges) > 80:",
-        "                written = out_iges",
-        "        except Exception as e:",
-        "            sys.stderr.write('Part.export IGES failed: %s\\n' % e)",
-        "    # 3) STL last resort",
-        "    if written is None:",
-        "        try:",
-        "            import Mesh",
-        "            Mesh.export(objs, out_stl)",
-        "            if os.path.isfile(out_stl) and os.path.getsize(out_stl) > 80:",
-        "                written = out_stl",
-        "        except Exception as e:",
-        "            sys.stderr.write('STL export failed: %s\\n' % e)",
-        "    if not written:",
-        "        raise RuntimeError('All CAD exports failed')",
-        "    # marker file for host process",
-        "    with open(out_step + '.ok', 'w') as mf:",
-        "        mf.write(written)",
-        "except Exception as e:",
-        "    sys.stderr.write('FCStd CAD export failed: %s\\n' % e)",
-        "    try:",
-        "        if doc is not None:",
-        "            App.closeDocument(doc.Name)",
-        "    except Exception:",
-        "        pass",
-        "    raise",
-        "else:",
-        "    try:",
-        "        App.closeDocument(doc.Name)",
-        "    except Exception:",
-        "        pass",
-        "",
-    ]
-    try:
-        with open(macro_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
-        run_freecad_console_script(app_path, macro_path, timeout=timeout)
-        ok_marker = step_path + ".ok"
-        if os.path.isfile(ok_marker):
-            try:
-                with open(ok_marker, "r", encoding="utf-8") as mf:
-                    written = mf.read().strip()
-                if written and os.path.isfile(written) and os.path.getsize(written) > 80:
-                    return written
-            except Exception:
-                pass
-        for p in (step_path, iges_path, stl_path):
-            if os.path.isfile(p) and os.path.getsize(p) > 80:
-                return p
-        print(f"[FCStd-CAD] export missing after FreeCAD run", flush=True)
-    except Exception as e:
-        print(f"[FCStd-CAD] {e}", flush=True)
-    return None
-
-
-def export_fcstd_to_temp_stl(app_path, filepath, timeout=120):
-    """Backward-compatible alias — prefers STEP/IGES via export_fcstd_to_temp_cad. """
-    return export_fcstd_to_temp_cad(app_path, filepath, timeout=timeout)
 
 
 def tessellate_step_file(app_path, filepath, max_triangles=8000):
@@ -2020,7 +2039,7 @@ class DownloadDialog(QDialog):
     def __init__(self, parent, app, is_dark=True):
         super().__init__(parent)
         self.setWindowTitle("Download FreeCAD Versions")
-        self.setFixedSize(540, 360)
+        self.setFixedSize(540, 440)
         self.setStyleSheet(make_qss(is_dark))
         self.app = app
         self.app.active_download_dialog = self
@@ -2066,6 +2085,16 @@ class DownloadDialog(QDialog):
         row_w.addWidget(self.btn_dl_w)
         layout.addLayout(row_w)
 
+        layout.addWidget(QLabel("Pre-release (RC) Version:"))
+        row_r = QHBoxLayout()
+        self.combo_rc = QComboBox()
+        row_r.addWidget(self.combo_rc, 1)
+        self.btn_dl_rc = QPushButton("Download")
+        self.btn_dl_rc.setObjectName("accent")
+        self.btn_dl_rc.clicked.connect(lambda: self._start_download(self.combo_rc.currentText()))
+        row_r.addWidget(self.btn_dl_rc)
+        layout.addLayout(row_r)
+
         layout.addStretch()
 
         # Progress area at the bottom
@@ -2095,7 +2124,7 @@ class DownloadDialog(QDialog):
         cancel_row.addWidget(self.btn_cancel)
         layout.addLayout(cancel_row)
 
-        self.update_combos(self.app.stables_values, self.app.weeklys_values)
+        self.update_combos(self.app.stables_values, self.app.weeklys_values, self.app.rcs_values)
 
     def _cancel_download(self):
         self.app.cancel_download()
@@ -2113,6 +2142,7 @@ class DownloadDialog(QDialog):
         self.progress.setValue(0)
         self.btn_dl_s.setEnabled(False)
         self.btn_dl_w.setEnabled(False)
+        self.btn_dl_rc.setEnabled(False)
         self.btn_cancel.setEnabled(True)
         self.app.download_version(filename, from_download_dialog=True)
 
@@ -2124,11 +2154,13 @@ class DownloadDialog(QDialog):
             self.install_dir_edit.setText(folder)
             self.app.set_install_dir(folder)
 
-    def update_combos(self, stables, weeklys):
+    def update_combos(self, stables, weeklys, rcs=()):
         self.combo_stable.clear()
         self.combo_stable.addItems(stables)
         self.combo_weekly.clear()
         self.combo_weekly.addItems(weeklys)
+        self.combo_rc.clear()
+        self.combo_rc.addItems(rcs)
 
     def update_status(self, text):
         self.lbl_status.setText(text or "")
@@ -2140,6 +2172,7 @@ class DownloadDialog(QDialog):
             self.lbl_status.setText("Download complete.")
             self.btn_dl_s.setEnabled(True)
             self.btn_dl_w.setEnabled(True)
+            self.btn_dl_rc.setEnabled(True)
             self.btn_cancel.setEnabled(False)
             QTimer.singleShot(400, self.accept)
         elif text and (
@@ -2149,6 +2182,7 @@ class DownloadDialog(QDialog):
         ):
             self.btn_dl_s.setEnabled(True)
             self.btn_dl_w.setEnabled(True)
+            self.btn_dl_rc.setEnabled(True)
             self.btn_cancel.setEnabled(False)
 
     def closeEvent(self, event):
@@ -2185,8 +2219,9 @@ class InfoDialog(QDialog):
         layout.addWidget(link)
 
         preview = QLabel(
-            "• Project library: browse recent CAD files and open them in FreeCAD.\n"
-            "   Formats: STL, STEP/STP, IGES, BREP, FCStd."
+            "• Project library: use 3D view or double-click to open a file in F3D.\n"
+            "   Formats: STL, STEP/STP, IGES, BREP, FCStd.\n"
+            "   Requires F3D (https://f3d.app/), recent enough to read FCStd files."
         )
         preview.setWordWrap(True)
         layout.addWidget(preview)
@@ -2489,13 +2524,20 @@ class PRConversationDialog(QDialog):
                 pass
 
 
+UPDATE_KIND_LABELS = {
+    "stable": "Stable",
+    "weekly": "Weekly / Dev",
+    "rc": "Pre-release (RC)",
+}
+
+
 class UpdateAvailableDialog(QDialog):
     """Startup dialog for first run or available updates."""
 
     def __init__(self, parent, updates, is_dark=True, welcome=False):
         """
-        updates: list of dicts {kind: 'stable'|'weekly', filename: str, label: str}
-        choice: None | "both" | "stable" | "weekly"
+        updates: list of dicts {kind: 'stable'|'weekly'|'rc', filename: str, label: str}
+        choice: None | "both" | "stable" | "weekly" | "rc"
         """
         super().__init__(parent)
         self.updates = updates
@@ -2506,6 +2548,7 @@ class UpdateAvailableDialog(QDialog):
 
         has_stable = any(u.get("kind") == "stable" for u in updates)
         has_weekly = any(u.get("kind") == "weekly" for u in updates)
+        has_rc = any(u.get("kind") == "rc" for u in updates)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -2527,7 +2570,7 @@ class UpdateAvailableDialog(QDialog):
             # Show which remote builds will be fetched
             lines = []
             for u in updates:
-                kind = "Stable" if u.get("kind") == "stable" else "Weekly / Dev"
+                kind = UPDATE_KIND_LABELS.get(u.get("kind"), "Weekly / Dev")
                 lines.append(f"• {kind}: {u.get('label') or u.get('filename')}")
             if lines:
                 detail = QLabel("\n".join(lines))
@@ -2553,7 +2596,7 @@ class UpdateAvailableDialog(QDialog):
 
             lines = []
             for u in updates:
-                kind = "Stable" if u.get("kind") == "stable" else "Weekly / Dev"
+                kind = UPDATE_KIND_LABELS.get(u.get("kind"), "Weekly / Dev")
                 lines.append(f"• {kind}: {u.get('label') or u.get('filename')}")
             body = QLabel("\n".join(lines) if lines else "A newer version is available.")
             body.setWordWrap(True)
@@ -2591,8 +2634,15 @@ class UpdateAvailableDialog(QDialog):
             btn_weekly.clicked.connect(lambda: self._choose("weekly"))
             row.addWidget(btn_weekly)
 
-        if has_stable and has_weekly:
-            btn_both = QPushButton(lbl_both)
+        if has_rc:
+            btn_rc = QPushButton("Download RC" if welcome else "Update RC")
+            btn_rc.setObjectName("warning")
+            btn_rc.clicked.connect(lambda: self._choose("rc"))
+            row.addWidget(btn_rc)
+
+        n_kinds = sum((has_stable, has_weekly, has_rc))
+        if n_kinds >= 2:
+            btn_both = QPushButton(lbl_both if n_kinds == 2 else lbl_both.replace("both", "all"))
             btn_both.setObjectName("success")
             btn_both.clicked.connect(lambda: self._choose("both"))
             row.addWidget(btn_both)
@@ -2606,7 +2656,10 @@ class UpdateAvailableDialog(QDialog):
 
 class FreeCADLauncher(QMainWindow):
     # Thread-safe signals for UI updates from worker threads
-    sig_releases = Signal(list, list)          # stables, weeklys
+    sig_releases = Signal(list, list, list)    # stables, weeklys, rcs
+    sig_launcher_update = Signal(object)       # update info dict or None
+    sig_launcher_progress = Signal(str)
+    sig_launcher_done = Signal(bool, str)      # ok, version or error text
     sig_releases_error = Signal(str)
     sig_recent_prs = Signal(list)
     sig_recent_prs_error = Signal(str)
@@ -2661,8 +2714,13 @@ class FreeCADLauncher(QMainWindow):
         self.recent_files_map = {}
         self.stable_versions = []
         self.weekly_versions = []
+        self.rc_versions = []
         self.stables_values = []
         self.weeklys_values = []
+        self.rcs_values = []
+        self._launcher_update = None      # info dict when a newer launcher exists
+        self._launcher_busy = False
+        self._launcher_updated_to = None  # set once the new .exe is in place
         self.active_download_dialog = None
         self.download_urls = {}
         self.download_sizes = {}
@@ -2694,6 +2752,9 @@ class FreeCADLauncher(QMainWindow):
         self.sig_download_finished.connect(self._on_manual_download_finished)
         self.sig_milestone.connect(self._apply_milestone)
         self.sig_updates_available.connect(self._show_update_available_dialog)
+        self.sig_launcher_update.connect(self._on_launcher_update_info)
+        self.sig_launcher_progress.connect(lambda text: self.lbl_status.setText(text))
+        self.sig_launcher_done.connect(self._on_launcher_update_done)
 
         disable_freecad_start_page()
 
@@ -2710,6 +2771,7 @@ class FreeCADLauncher(QMainWindow):
         threading.Thread(target=self.fetch_github_releases, daemon=True).start()
         threading.Thread(target=self.fetch_recent_prs, daemon=True).start()
         threading.Thread(target=self.fetch_next_milestone, daemon=True).start()
+        threading.Thread(target=self.check_launcher_update, daemon=True).start()
 
     # ----- Theme -----
     def apply_theme(self):
@@ -3100,7 +3162,7 @@ class FreeCADLauncher(QMainWindow):
         b1_lay.setContentsMargins(14, 12, 14, 12)
         b1_lay.setSpacing(8)
         b1_lay.setSizeConstraint(QLayout.SetMinimumSize)
-        self._active_version_kind = "stable"  # "stable" or "weekly"
+        self._active_version_kind = "stable"  # "stable", "weekly" or "rc"
 
         # Stable header + combo
         stable_hdr = QHBoxLayout()
@@ -3143,6 +3205,33 @@ class FreeCADLauncher(QMainWindow):
         self.weekly_combo.currentIndexChanged.connect(lambda: self.on_version_combo_changed("weekly"))
         self.weekly_combo.activated.connect(lambda: self.on_version_combo_changed("weekly"))
         b1_lay.addWidget(self.weekly_combo)
+
+        # Pre-release (RC) header + combo: only visible while an RC exists
+        self.rc_box = QWidget()
+        rc_lay = QVBoxLayout(self.rc_box)
+        rc_lay.setContentsMargins(0, 4, 0, 0)
+        rc_lay.setSpacing(8)
+        rc_hdr = QHBoxLayout()
+        rc_hdr.setContentsMargins(0, 0, 0, 0)
+        lbl = QLabel("PRE-RELEASE (RC)")
+        lbl.setObjectName("sectionTitle")
+        rc_hdr.addWidget(lbl)
+        rc_hdr.addStretch()
+        self.lbl_rc_status = QLabel("Checking…")
+        self.lbl_rc_status.setObjectName("muted")
+        self.lbl_rc_status.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        rc_hdr.addWidget(self.lbl_rc_status)
+        rc_lay.addLayout(rc_hdr)
+
+        self.rc_combo = QComboBox()
+        self.rc_combo.setFixedHeight(32)
+        self.rc_combo.setMinimumWidth(120)
+        self.rc_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.rc_combo.currentIndexChanged.connect(lambda: self.on_version_combo_changed("rc"))
+        self.rc_combo.activated.connect(lambda: self.on_version_combo_changed("rc"))
+        rc_lay.addWidget(self.rc_combo)
+        self.rc_box.setVisible(False)
+        b1_lay.addWidget(self.rc_box)
 
         # One row: Download, Desktop entry, Delete, Launch (aligned)
         btn_wrap = QWidget()
@@ -3250,10 +3339,20 @@ class FreeCADLauncher(QMainWindow):
         self.chk_autoclose.toggled.connect(self.toggle_autoclose)
         b4_lay.addWidget(self.chk_autoclose)
 
+        self.chk_hidpi = QCheckBox("Launch with HiDPI scale (Tutorial Mode)")
+        self.chk_hidpi.setChecked(self.var_custom_script_env)
+        self.chk_hidpi.toggled.connect(self.toggle_custom_script_env)
+        b4_lay.addWidget(self.chk_hidpi)
+
         self.chk_dark = QCheckBox("Dark mode")
         self.chk_dark.setChecked(self.var_dark_mode)
         self.chk_dark.toggled.connect(self.toggle_dark_mode)
         b4_lay.addWidget(self.chk_dark)
+
+        self.chk_vanilla = QCheckBox("Vanilla launch (empty profile, like first run)")
+        self.chk_vanilla.setChecked(self.var_vanilla_launch)
+        self.chk_vanilla.toggled.connect(self.toggle_vanilla_launch)
+        b4_lay.addWidget(self.chk_vanilla)
 
         self.chk_no_update_reminder = QCheckBox("Turn off update reminder")
         self.chk_no_update_reminder.setChecked(self.var_disable_update_reminder)
@@ -3532,6 +3631,20 @@ class FreeCADLauncher(QMainWindow):
         self._preview_resize_timer.timeout.connect(self._scale_preview_to_label)
         preview_lay.addWidget(self.thumb_label)
 
+        view3d_row = QHBoxLayout()
+        view3d_row.setContentsMargins(0, 0, 0, 0)
+        view3d_row.addStretch()
+        self.btn_view_3d = QPushButton("3D view")
+        self.btn_view_3d.setObjectName("accent")
+        self.btn_view_3d.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_view_3d.setToolTip(
+            "Open the selected file in F3D"
+        )
+        self.btn_view_3d.setFixedHeight(26)
+        self.btn_view_3d.setEnabled(False)
+        self.btn_view_3d.clicked.connect(self.open_interactive_mesh_preview)
+        view3d_row.addWidget(self.btn_view_3d)
+        preview_lay.addLayout(view3d_row)
         right_lay.addWidget(preview_wrap, 0)
 
         self.lbl_file_info = QLabel("No project selected")
@@ -3543,6 +3656,7 @@ class FreeCADLauncher(QMainWindow):
         self.recent_list.setMinimumHeight(120)
         self.recent_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.recent_list.itemSelectionChanged.connect(self.on_project_select)
+        self.recent_list.itemDoubleClicked.connect(self.open_interactive_mesh_preview)
         right_lay.addWidget(self.recent_list, 1)
 
         scan_row = QHBoxLayout()
@@ -3604,8 +3718,12 @@ class FreeCADLauncher(QMainWindow):
         btn_stats.clicked.connect(self.show_stats)
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(self.close)
+        self.btn_update_launcher = LauncherUpdateButton("Update launcher")
+        self.btn_update_launcher.setEnabled(False)
+        self.btn_update_launcher.clicked.connect(self.update_launcher)
         footer_lay.addWidget(btn_info)
         footer_lay.addWidget(btn_stats)
+        footer_lay.addWidget(self.btn_update_launcher)
         footer_lay.addWidget(btn_close)
         outer.addWidget(footer_widget)
 
@@ -3622,6 +3740,8 @@ class FreeCADLauncher(QMainWindow):
         ph2.setAlignment(Qt.AlignCenter)
         ph2.setWordWrap(True)
         self.pr_search_layout.addWidget(ph2)
+
+        self._refresh_launcher_button()
 
         # Once the window is shown (widgets polished), size the minimums from content
         QTimer.singleShot(0, self._fit_minimum_size)
@@ -4323,6 +4443,8 @@ class FreeCADLauncher(QMainWindow):
         except Exception:
             pass
         env = os.environ.copy()
+        self._apply_scale_env(env)
+        vanilla_dir = self._apply_vanilla_env(env)
         pr_start_time = time.time()
         # A pixi-built FreeCAD needs its pixi environment (Qt/OCCT/Python DLLs on
         # PATH). Starting build/.../FreeCAD.exe directly fails silently, so go
@@ -4375,6 +4497,8 @@ class FreeCADLauncher(QMainWindow):
             except Exception as e:
                 print(f"[PR launch] report failed: {e}", flush=True)
             self._record_session(stat_key, pr_start_time, count_launch=True)
+            if vanilla_dir:
+                shutil.rmtree(vanilla_dir, ignore_errors=True)
 
         if self.var_autoclose:
             app = QApplication.instance()
@@ -4962,19 +5086,22 @@ class FreeCADLauncher(QMainWindow):
     def show_copyable_error(self, title, message):
         CopyableErrorDialog(self, title, message, is_dark=self.var_dark_mode).exec()
 
+    def _channel(self, kind):
+        """(combo, versions list) for 'stable' | 'weekly' | 'rc'."""
+        if kind == "weekly":
+            return self.weekly_combo, self.weekly_versions
+        if kind == "rc":
+            return self.rc_combo, self.rc_versions
+        return self.stable_combo, self.stable_versions
+
     def on_version_combo_changed(self, kind):
-        """User picked a version from stable or weekly dropdown."""
+        """User picked a version from the stable, weekly or RC dropdown."""
         self._active_version_kind = kind
-        if kind == "stable":
-            idx = self.stable_combo.currentIndex()
-            if 0 <= idx < len(self.stable_versions):
-                self.config_data["last_selected_version"] = self.stable_versions[idx]["display"]
-                self.save_config()
-        else:
-            idx = self.weekly_combo.currentIndex()
-            if 0 <= idx < len(self.weekly_versions):
-                self.config_data["last_selected_version"] = self.weekly_versions[idx]["display"]
-                self.save_config()
+        combo, versions = self._channel(kind)
+        idx = combo.currentIndex()
+        if 0 <= idx < len(versions):
+            self.config_data["last_selected_version"] = versions[idx]["display"]
+            self.save_config()
         self._update_version_highlight()
 
     def _update_version_highlight(self):
@@ -5001,30 +5128,35 @@ class FreeCADLauncher(QMainWindow):
             f"background-color: {t['neutral']}; width: 26px; "
             f"border-top-right-radius: 5px; border-bottom-right-radius: 5px; }}"
         )
-        if self._active_version_kind == "weekly":
-            self.stable_combo.setStyleSheet(inactive)
-            self.weekly_combo.setStyleSheet(active)
-        else:
-            self.stable_combo.setStyleSheet(active)
-            self.weekly_combo.setStyleSheet(inactive)
+        for kind in ("stable", "weekly", "rc"):
+            combo, _versions = self._channel(kind)
+            combo.setStyleSheet(active if kind == self._active_version_kind else inactive)
 
     def _selected_version(self):
         """Return the currently active version dict, or None."""
-        if self._active_version_kind == "weekly":
-            idx = self.weekly_combo.currentIndex()
-            if 0 <= idx < len(self.weekly_versions):
-                return self.weekly_versions[idx]
-        idx = self.stable_combo.currentIndex()
-        if 0 <= idx < len(self.stable_versions):
-            return self.stable_versions[idx]
-        idx = self.weekly_combo.currentIndex()
-        if 0 <= idx < len(self.weekly_versions):
-            return self.weekly_versions[idx]
+        order = [self._active_version_kind] + [
+            k for k in ("stable", "weekly", "rc") if k != self._active_version_kind
+        ]
+        for kind in order:
+            combo, versions = self._channel(kind)
+            idx = combo.currentIndex()
+            if 0 <= idx < len(versions):
+                return versions[idx]
         return None
 
     def toggle_autoclose(self, checked):
         self.var_autoclose = checked
         self.config_data["auto_close"] = checked
+        self.save_config()
+
+    def toggle_custom_script_env(self, checked):
+        self.var_custom_script_env = checked
+        self.config_data["use_custom_script_env"] = checked
+        self.save_config()
+
+    def toggle_vanilla_launch(self, checked):
+        self.var_vanilla_launch = checked
+        self.config_data["vanilla_launch"] = checked
         self.save_config()
 
     def toggle_use_pixi_build(self, checked):
@@ -5037,13 +5169,32 @@ class FreeCADLauncher(QMainWindow):
         self.config_data["disable_update_reminder"] = checked
         self.save_config()
 
+    def _apply_scale_env(self, env):
+        """Tutorial Mode: launch FreeCAD with a larger HiDPI scale factor."""
+        if not self.var_custom_script_env:
+            return
+        env["QT_SCALE_FACTOR"] = "1.66"
+        env["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
+        if not IS_WINDOWS:
+            env["XCURSOR_SIZE"] = "80"
+
+    def _apply_vanilla_env(self, env):
+        if not self.var_vanilla_launch:
+            return None
+        vanilla_dir = tempfile.mkdtemp(prefix="freecad_vanilla_")
+        env["FREECAD_USER_HOME"] = vanilla_dir
+        return vanilla_dir
+
     def refresh_local_versions(self):
-        self.stable_combo.blockSignals(True)
-        self.weekly_combo.blockSignals(True)
-        self.stable_combo.clear()
-        self.weekly_combo.clear()
+        kinds = ("stable", "weekly", "rc")
+        combos = {"stable": self.stable_combo, "weekly": self.weekly_combo, "rc": self.rc_combo}
+        for c in combos.values():
+            c.blockSignals(True)
+            c.clear()
         self.stable_versions = []
         self.weekly_versions = []
+        self.rc_versions = []
+        lists = {"stable": self.stable_versions, "weekly": self.weekly_versions, "rc": self.rc_versions}
 
         install_dir = self.get_install_dir()
         if os.path.exists(install_dir):
@@ -5051,41 +5202,32 @@ class FreeCADLauncher(QMainWindow):
             appimages.sort(key=version_sort_key, reverse=True)
             for file in appimages:
                 full_path = os.path.join(install_dir, file)
-                if "weekly" in file.lower() or "dev" in file.lower():
-                    display_name = self.format_version_name(file, is_weekly=True)
-                    self.weekly_versions.append({"display": display_name, "name": file, "path": full_path})
-                    self.weekly_combo.addItem(display_name)
-                else:
-                    display_name = self.format_version_name(file, is_weekly=False)
-                    self.stable_versions.append({"display": display_name, "name": file, "path": full_path})
-                    self.stable_combo.addItem(display_name)
+                kind = version_kind(file)
+                display_name = self.format_version_name(file, is_weekly=(kind == "weekly"))
+                lists[kind].append({"display": display_name, "name": file, "path": full_path})
+                combos[kind].addItem(display_name)
 
         last_sel = self.config_data.get("last_selected_version", "")
         restored = False
         if last_sel:
-            for i, v in enumerate(self.stable_versions):
-                if v["display"] == last_sel or v["name"] == last_sel:
-                    self.stable_combo.setCurrentIndex(i)
-                    self._active_version_kind = "stable"
-                    restored = True
-                    break
-            if not restored:
-                for i, v in enumerate(self.weekly_versions):
+            for kind in kinds:
+                for i, v in enumerate(lists[kind]):
                     if v["display"] == last_sel or v["name"] == last_sel:
-                        self.weekly_combo.setCurrentIndex(i)
-                        self._active_version_kind = "weekly"
+                        combos[kind].setCurrentIndex(i)
+                        self._active_version_kind = kind
                         restored = True
                         break
+                if restored:
+                    break
         if not restored:
-            if self.stable_combo.count() > 0:
-                self.stable_combo.setCurrentIndex(0)
-                self._active_version_kind = "stable"
-            elif self.weekly_combo.count() > 0:
-                self.weekly_combo.setCurrentIndex(0)
-                self._active_version_kind = "weekly"
+            for kind in kinds:
+                if combos[kind].count() > 0:
+                    combos[kind].setCurrentIndex(0)
+                    self._active_version_kind = kind
+                    break
 
-        self.stable_combo.blockSignals(False)
-        self.weekly_combo.blockSignals(False)
+        for c in combos.values():
+            c.blockSignals(False)
         self._update_version_highlight()
         self.check_versions_status()
 
@@ -5119,6 +5261,22 @@ class FreeCADLauncher(QMainWindow):
         else:
             self.lbl_weekly_status.setText("Checking…")
             self.lbl_weekly_status.setStyleSheet("")
+
+        # Pre-release (RC) channel: the section only exists while an RC does
+        local_rc_keys = {extract_version_key(v["name"]) for v in self.rc_versions}
+        local_rc_keys.discard(None)
+        if self.rcs_values:
+            latest_key = extract_version_key(self.rcs_values[0])
+            if latest_key is not None and latest_key in local_rc_keys:
+                self.lbl_rc_status.setText("● Up to date")
+                self.lbl_rc_status.setStyleSheet(f"color: {t['success']}; font-size: 11px; font-weight: 600;")
+            else:
+                self.lbl_rc_status.setText("● New RC available")
+                self.lbl_rc_status.setStyleSheet(f"color: {t['danger']}; font-size: 11px; font-weight: 600;")
+        else:
+            self.lbl_rc_status.setText("")
+            self.lbl_rc_status.setStyleSheet("")
+        self.rc_box.setVisible(bool(self.rcs_values or self.rc_versions))
 
     def fetch_next_milestone(self):
         """Fetch open FreeCAD milestones and pick the next stable release target."""
@@ -5203,13 +5361,169 @@ class FreeCADLauncher(QMainWindow):
             parts.append(f"due {due}")
         self.lbl_milestone_detail.setText(" · ".join(parts))
 
+    # ----- Launcher self-update -----
+
+    def _launcher_exe_path(self):
+        """Path of the packaged launcher .exe this process runs from, or None (plain script)."""
+        if getattr(sys, "frozen", False):
+            path = os.path.abspath(sys.executable)
+            if path.lower().endswith(".exe") and os.path.isfile(path):
+                return path
+        return None
+
+    def check_launcher_update(self):
+        """Worker thread: silently look for a newer launcher .exe."""
+        try:
+            info = find_launcher_update(LAUNCHER_VERSION)
+        except Exception as e:
+            print(f"[launcher update] {e}", flush=True)
+            info = None
+        self.sig_launcher_update.emit(info)
+
+    def _on_launcher_update_info(self, info):
+        self._launcher_update = info or None
+        self._refresh_launcher_button()
+
+    def _refresh_launcher_button(self):
+        btn = getattr(self, "btn_update_launcher", None)
+        if btn is None:
+            return
+        info = self._launcher_update
+        if info and self._launcher_exe_path() and not self._launcher_busy:
+            btn.setEnabled(True)
+            btn.set_attention(True)
+            btn.setToolTip(f"Update the launcher: {LAUNCHER_VERSION} \u2192 {info['version']}")
+            return
+        btn.setEnabled(False)
+        btn.set_attention(False)
+        if self._launcher_busy:
+            btn.setToolTip("Updating the launcher\u2026")
+        elif self._launcher_updated_to:
+            btn.setToolTip(f"Updated to {self._launcher_updated_to}: restart the launcher to use it")
+        elif info:
+            btn.setToolTip(
+                f"Version {info['version']} is available, but the launcher is not "
+                "running from the packaged .exe"
+            )
+        else:
+            btn.setToolTip(f"The launcher is up to date (v{LAUNCHER_VERSION})")
+
+    def update_launcher(self):
+        info = self._launcher_update
+        path = self._launcher_exe_path()
+        if not info or not path or self._launcher_busy:
+            return
+        self._launcher_busy = True
+        self._refresh_launcher_button()
+        threading.Thread(
+            target=self._download_launcher_update, args=(info, path), daemon=True
+        ).start()
+
+    def _download_launcher_update(self, info, exe_path):
+        """Worker thread: download next to the running .exe, then swap it in place."""
+        tmp = exe_path + ".download"
+        try:
+            req = urllib.request.Request(
+                info["url"], headers={"User-Agent": f"FreeCAD-Smart-Launcher/{LAUNCHER_VERSION}"}
+            )
+            done = 0
+            with urllib.request.urlopen(req, timeout=30, context=_SSL_CTX) as resp, open(tmp, "wb") as out:
+                total = int(resp.headers.get("Content-Length") or info.get("size") or 0)
+                last_pct = -1
+                while True:
+                    chunk = resp.read(256 * 1024)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    done += len(chunk)
+                    if total:
+                        pct = int(done * 100 / total)
+                        if pct != last_pct:
+                            last_pct = pct
+                            self.sig_launcher_progress.emit(
+                                f"Downloading launcher {info['version']}\u2026 {pct}%"
+                            )
+            expected = info.get("size")
+            if expected and done != expected:
+                raise IOError(f"incomplete download ({done} of {expected} bytes)")
+            with open(tmp, "rb") as f:
+                head = f.read(2)
+            if head != b"MZ":
+                raise IOError("the downloaded file is not a valid Windows executable")
+            # A running .exe cannot be overwritten on Windows, but it CAN be renamed:
+            # move it aside (kept as .previous), then put the new one in its place.
+            previous = exe_path + ".previous"
+            if os.path.lexists(previous):
+                try:
+                    os.remove(previous)
+                except OSError:
+                    pass
+            os.replace(exe_path, previous)
+            try:
+                os.replace(tmp, exe_path)
+            except OSError:
+                os.replace(previous, exe_path)  # roll back
+                raise
+            self.sig_launcher_done.emit(True, info["version"])
+        except Exception as e:
+            self.sig_launcher_done.emit(False, f"{type(e).__name__}: {e}")
+        finally:
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
+
+    def _on_launcher_update_done(self, ok, message):
+        self._launcher_busy = False
+        if not ok:
+            self.lbl_status.setText("Launcher update failed.")
+            self._refresh_launcher_button()
+            QMessageBox.warning(self, "Launcher update", f"Could not update the launcher:\n{message}")
+            return
+        self._launcher_update = None
+        self._launcher_updated_to = message
+        self.lbl_status.setText(f"Launcher updated to {message}.")
+        self._refresh_launcher_button()
+        answer = QMessageBox.question(
+            self, "Launcher updated",
+            f"Launcher {message} is installed.\nRestart it now?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
+        )
+        if answer == QMessageBox.Yes:
+            self._restart_launcher()
+
+    def _restart_launcher(self):
+        """Start the (new) .exe once this process is gone, then close."""
+        path = self._launcher_exe_path()
+        if not path:
+            return
+        env = dict(os.environ)
+        # PyInstaller one-file: the new .exe must unpack its own copy, not reuse ours.
+        for key in ("_MEIPASS2", "_PYI_APPLICATION_HOME_DIR", "_PYI_ARCHIVE_FILE",
+                    "_PYI_PARENT_PROCESS_LEVEL", "_PYI_SPLASH_IPC"):
+            env.pop(key, None)
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        safe_path = path.replace("'", "''")
+        ps = (
+            f"Wait-Process -Id {os.getpid()} -Timeout 20 -ErrorAction SilentlyContinue; "
+            f"Start-Process -FilePath '{safe_path}'"
+        )
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
+            env=env,
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        self.close()
+
     def fetch_github_releases(self):
         try:
             releases = _github_get(
                 "https://api.github.com/repos/FreeCAD/FreeCAD/releases?per_page=20",
                 timeout=15,
             )
-            stables, weeklys = [], []
+            stables, weeklys, rcs = [], [], []
             self.download_urls = {}
             self.download_sizes = {}
             for rel in releases:
@@ -5241,21 +5555,26 @@ class FreeCADLauncher(QMainWindow):
                         self.download_sizes[name] = asset.get("size")
                         if is_weekly_rel:
                             weeklys.append(name)
+                        elif is_prerelease_name(name):
+                            rcs.append(name)  # 26.3rc1... get their own channel
                         else:
                             stables.append(name)
                         break
             stables.sort(key=version_sort_key, reverse=True)
             weeklys.sort(key=version_sort_key, reverse=True)
-            self.sig_releases.emit(stables, weeklys)
+            rcs = drop_obsolete_rcs(rcs, stables)  # no RC once its final is out
+            rcs.sort(key=version_sort_key, reverse=True)
+            self.sig_releases.emit(stables, weeklys, rcs)
         except Exception as e:
             print(f"[GitHub releases] error: {e}", flush=True)
             self.sig_releases_error.emit(f"Offline mode ({type(e).__name__})")
 
-    def update_release_combos(self, stables, weeklys):
+    def update_release_combos(self, stables, weeklys, rcs=()):
         self.stables_values = stables
         self.weeklys_values = weeklys
+        self.rcs_values = list(rcs)
         if self.active_download_dialog:
-            self.active_download_dialog.update_combos(stables, weeklys)
+            self.active_download_dialog.update_combos(stables, weeklys, self.rcs_values)
         self.lbl_status.setText("Connected to GitHub. Ready.")
         if self.active_download_dialog:
             self.active_download_dialog.update_status("Connected to GitHub. Ready.")
@@ -5297,12 +5616,22 @@ class FreeCADLauncher(QMainWindow):
                     "filename": latest,
                     "label": self.format_version_name(latest, is_weekly=True),
                 })
+        if self.rcs_values:
+            latest = self.rcs_values[0]
+            if local_version_name(latest) not in local_names:
+                updates.append({
+                    "kind": "rc",
+                    "filename": latest,
+                    "label": self.format_version_name(latest, is_weekly=False),
+                })
         return updates
 
     def _local_versions_of_kind(self, kind):
-        """Return list of local version dicts for stable or weekly (newest first)."""
+        """Return list of local version dicts for stable, weekly or rc (newest first)."""
         if kind == "weekly":
             return list(self.weekly_versions)
+        if kind == "rc":
+            return list(self.rc_versions)
         return list(self.stable_versions)
 
     def _maybe_prompt_updates(self):
@@ -5310,14 +5639,25 @@ class FreeCADLauncher(QMainWindow):
         if self._update_prompt_shown:
             return
         updates = self._available_updates()
+        has_local = bool(self.stable_versions or self.weekly_versions or self.rc_versions)
+        is_welcome = not has_local
+        # First run: only offer stable / weekly. Later: offer a given RC only once
+        # (not at every startup until it is installed).
+        last_rc = self.config_data.get("last_rc_prompted", "")
+        updates = [
+            u for u in updates
+            if u.get("kind") != "rc" or (not is_welcome and u.get("filename") != last_rc)
+        ]
         if not updates:
             return
-        has_local = bool(self.stable_versions or self.weekly_versions)
-        is_welcome = not has_local
         # "Turn off update reminder" only suppresses update prompts, not first-run welcome
         if not is_welcome and self.var_disable_update_reminder:
             return
         self._update_prompt_shown = True
+        rc_update = next((u for u in updates if u.get("kind") == "rc"), None)
+        if rc_update:
+            self.config_data["last_rc_prompted"] = rc_update.get("filename", "")
+            self.save_config()
         self.sig_updates_available.emit(updates, is_welcome)
 
     def _show_update_available_dialog(self, updates, is_welcome=False):
@@ -5335,14 +5675,14 @@ class FreeCADLauncher(QMainWindow):
             selected = [u for u in updates if u.get("kind") == "stable"]
         elif choice == "weekly":
             selected = [u for u in updates if u.get("kind") == "weekly"]
-        # choice == "both" -> all updates
+        elif choice == "rc":
+            selected = [u for u in updates if u.get("kind") == "rc"]
+        # choice == "both" / "all" -> all updates
         for u in selected:
             fn = u.get("filename")
             if not fn:
                 continue
-            kind = u.get("kind") or (
-                "weekly" if ("weekly" in fn.lower() or "dev" in fn.lower()) else "stable"
-            )
+            kind = u.get("kind") or version_kind(fn)
             if is_welcome:
                 # First install: no previous-version prompt; ask for desktop entry after each DL
                 self.download_version(fn, from_download_dialog=True)
@@ -5855,6 +6195,16 @@ class FreeCADLauncher(QMainWindow):
         self._preview_mode = "none"
         self.thumb_label.setPixmap(QPixmap())
         self.thumb_label.setText(text)
+        if hasattr(self, "btn_view_3d"):
+            self.btn_view_3d.setEnabled(False)
+
+    def _update_view_3d_button(self, ext):
+        if not hasattr(self, "btn_view_3d"):
+            return
+        can_view = ext in (
+            {".stl", ".obj", ".ply", ".gltf", ".glb", ".fcstd"} | set(STEP_LIKE_EXTENSIONS)
+        )
+        self.btn_view_3d.setEnabled(bool(can_view))
 
     def on_project_select(self):
         items = self.recent_list.selectedItems()
@@ -5865,6 +6215,8 @@ class FreeCADLauncher(QMainWindow):
         filepath = self.recent_files_map[filename]
         mtime = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(filepath)))
         ext = os.path.splitext(filepath)[1].lower()
+        self._update_view_3d_button(ext)
+
         if ext == ".fcstd":
             fc_version = "Unknown"
             try:
@@ -5915,6 +6267,8 @@ class FreeCADLauncher(QMainWindow):
             return self.stable_versions[0]["path"]
         if self.weekly_versions:
             return self.weekly_versions[0]["path"]
+        if self.rc_versions:
+            return self.rc_versions[0]["path"]
         return None
 
 
@@ -5928,50 +6282,9 @@ class FreeCADLauncher(QMainWindow):
         if not filepath or not os.path.isfile(filepath):
             return
         ext = os.path.splitext(filepath)[1].lower()
-        supported = {".stl", ".obj", ".ply", ".gltf", ".glb", ".3ds", ".fbx"} | set(
-            STEP_LIKE_EXTENSIONS
-        ) | {".fcstd"}
-        if ext not in supported and ext not in {".stl"} | set(STEP_LIKE_EXTENSIONS):
-            # still try F3D for unknown 3D-ish files
-            pass
 
-        # FCStd is not read by F3D; export STEP/IGES (or STL) first
-        view_path = filepath
-        if ext == ".fcstd":
-            app_path = self.get_selected_version_path()
-            if not app_path:
-                QMessageBox.information(
-                    self,
-                    "3D viewer",
-                    "Viewing .FCStd in F3D requires an installed FreeCAD version selected "
-                    "in the launcher (used to export STEP/IGES).",
-                )
-                return
-            self.lbl_status.setText("Exporting FreeCAD file to STEP/IGES for F3D…")
-            QApplication.processEvents()
-            cad_tmp = export_fcstd_to_temp_cad(app_path, filepath)
-            if not cad_tmp:
-                QMessageBox.warning(
-                    self,
-                    "3D viewer",
-                    "Could not export this FreeCAD file to STEP/IGES.\n"
-                    "Try Launch Project to open it in FreeCAD.",
-                )
-                return
-            view_path = cad_tmp
-            self.lbl_status.setText(f"Exported: {os.path.basename(cad_tmp)}")
-
-        # Prefer F3D when installed
-        if not os.path.isfile(view_path):
-            QMessageBox.warning(
-                self,
-                "3D viewer",
-                "Export finished but the temporary mesh file is missing.\n"
-                + view_path
-                + "\n\nCheck that FreeCAD can run headless from the launcher.",
-            )
-            return
-        if self._open_with_f3d(view_path):
+        # F3D reads .FCStd (and STEP/IGES/STL...) natively: no export step needed.
+        if self._open_with_f3d(filepath):
             return
 
         # Fallback: VTK mesh viewer
@@ -5981,18 +6294,6 @@ class FreeCADLauncher(QMainWindow):
                 triangles = parse_stl_triangles(filepath)
             except Exception:
                 triangles = None
-        elif ext == ".fcstd":
-            if view_path.lower().endswith(".stl"):
-                try:
-                    triangles = parse_stl_triangles(view_path)
-                except Exception:
-                    triangles = None
-            elif any(view_path.lower().endswith(x) for x in (".step", ".stp", ".iges", ".igs")):
-                triangles = tessellate_step_with_ocp(view_path)
-                if not triangles:
-                    vp = self.get_selected_version_path()
-                    if vp:
-                        triangles = tessellate_step_file(vp, view_path)
         elif ext in STEP_LIKE_EXTENSIONS:
             triangles = self.step_preview_cache.get((filepath, os.path.getmtime(filepath)))
             if not triangles:
@@ -6016,8 +6317,9 @@ class FreeCADLauncher(QMainWindow):
                "  • Flatpak:      flatpak install flathub io.github.f3d_app.f3d\n")
             +
             "  • Website:      https://f3d.app/\n\n"
-            "Fallback: pip install vtk\n\n"
-            "The small static preview in the launcher still works without F3D.",
+            + ("A recent F3D is required to view .FCStd files (no fallback viewer).\n\n"
+               if ext == ".fcstd" else "Fallback: pip install vtk\n\n")
+            + "The small static preview in the launcher still works without F3D.",
         )
 
     def _open_with_f3d(self, filepath):
@@ -6121,6 +6423,8 @@ class FreeCADLauncher(QMainWindow):
         if single_instance:
             cmd.append("--single-instance")
         env = os.environ.copy()
+        self._apply_scale_env(env)
+        vanilla_dir = self._apply_vanilla_env(env)
         if project_path:
             cmd.append(project_path)
 
@@ -6128,11 +6432,15 @@ class FreeCADLauncher(QMainWindow):
             # pixi-built PR: must run inside the pixi environment.
             pixi_cmd, pixi_cwd = self._pixi_cmd_for_exe(app_path)
             if pixi_cmd:
-                return subprocess.Popen(
+                proc = subprocess.Popen(
                     pixi_cmd + cmd[1:], cwd=pixi_cwd, env=sanitize_build_env(env)
                 )
-            # No AppImage/FUSE on Windows: launch the .exe directly, no fallback needed.
-            return subprocess.Popen(cmd, env=env)
+            else:
+                # No AppImage/FUSE on Windows: launch the .exe directly, no fallback needed.
+                proc = subprocess.Popen(cmd, env=env)
+            # Temp vanilla profile is removed by whoever waits for the session to end.
+            proc._vanilla_dir = vanilla_dir
+            return proc
 
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=env)
 
@@ -6166,6 +6474,9 @@ class FreeCADLauncher(QMainWindow):
                     ))
             except Exception:
                 pass
+            finally:
+                if vanilla_dir:
+                    shutil.rmtree(vanilla_dir, ignore_errors=True)
 
         threading.Thread(target=watch_for_fuse_failure, daemon=True).start()
         return process
@@ -6258,6 +6569,9 @@ class FreeCADLauncher(QMainWindow):
             except Exception as e:
                 print(f"[stats] wait failed: {e}", flush=True)
             self._record_session(stat_key, start_time, count_launch=True)
+            vd = getattr(process, "_vanilla_dir", None)
+            if vd:
+                shutil.rmtree(vd, ignore_errors=True)
 
         if self.var_autoclose:
             # Keep the process alive until FreeCAD exits so the session is saved.
