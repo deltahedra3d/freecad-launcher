@@ -122,21 +122,22 @@ def resolve_exe(path):
     """
     Given a "version path" (an .AppImage file on Linux, or an extracted
     portable folder on Windows), return the actual executable to launch.
+    The file name is matched case-insensitively (26.3 ships bin\\freecad.exe).
     """
     if IS_WINDOWS and path and os.path.isdir(path):
-        for candidate in (
-            os.path.join(path, "FreeCAD.exe"),
-            os.path.join(path, "bin", "FreeCAD.exe"),
-        ):
-            if os.path.isfile(candidate):
-                return candidate
-        # Layout changed upstream at some point — fall back to a shallow scan.
-        for root, _dirs, files in os.walk(path):
-            if "FreeCAD.exe" in files:
-                return os.path.join(root, "FreeCAD.exe")
+        base_depth = os.path.normpath(path).count(os.sep)
+        found = []
+        for root, dirs, files in os.walk(path):
+            for f in files:
+                if f.lower() == "freecad.exe":
+                    found.append(os.path.join(root, f))
             # Don't descend forever into a huge portable tree.
-            if root.count(os.sep) - path.count(os.sep) >= 3:
-                _dirs[:] = []
+            if os.path.normpath(root).count(os.sep) - base_depth >= 4:
+                dirs[:] = []
+        if found:
+            found.sort(key=lambda p: (p.count(os.sep), p.lower()))  # shallowest first
+            return found[0]
+        raise FileNotFoundError(f"FreeCAD.exe not found in {path}")
     return path
 
 
